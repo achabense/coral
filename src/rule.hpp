@@ -1,0 +1,486 @@
+#pragma once
+
+#include <algorithm>
+#include <array>
+#include <cassert>
+#include <cstdint>
+#include <cstring>
+#include <memory>
+#include <optional>
+#include <random>
+#include <span>
+#include <string>
+#include <type_traits>
+#include <utility>
+#include <vector>
+
+// #ifdef _MSC_VER
+// #pragma warning(push)
+// #pragma warning(disable : 6262 4267) // 6262: stack size; 4267: integer conversion
+// #endif
+
+// Isotropic 3-state rules.
+namespace iso3 {
+    inline void verify(bool v) {
+        if (!v) {
+            throw 0;
+        }
+    }
+
+    // To prevent adding enumerators to the namespace.
+    namespace _cellT_ {
+        enum /*class*/ cellT : uint8_t { states = 3, min = 0, max = states - 1 };
+    }
+    using _cellT_::cellT;
+
+    // 2 for debugging.
+    static_assert(cellT::states == 2 || cellT::states == 3);
+
+    struct envT {
+        cellT data[9] = {}; // {q, w, e, a, s, d, z, x, c}
+
+        envT diag() const {
+            const auto& [q, w, e, a, s, d, z, x, c] = data;
+            return {q, a, z, w, s, x, e, d, c};
+        }
+        envT rotate() const {
+            const auto& [q, w, e, a, s, d, z, x, c] = data;
+            return {z, a, q, x, s, w, c, d, e};
+        }
+    };
+
+    consteval int pow_cs(int pow) {
+        assert(0 <= pow && pow <= 9);
+        int v = 1;
+        for (int p = 0; p < pow; ++p) {
+            v *= cellT::states;
+        }
+        return v;
+    }
+
+    namespace _codeT_ {
+        enum /*class*/ codeT : uint16_t { states = pow_cs(9), min = 0, max = states - 1 };
+    }
+    using _codeT_::codeT;
+
+    inline codeT encode(const envT env) {
+        const auto& [q, w, e, a, s, d, z, x, c] = env.data;
+        const int v = q * pow_cs(0) + w * pow_cs(1) + e * pow_cs(2) + a * pow_cs(3) + s * pow_cs(4) + d * pow_cs(5) +
+                      z * pow_cs(6) + x * pow_cs(7) + c * pow_cs(8);
+        assert(0 <= v && v <= codeT::max);
+        return codeT(v);
+    }
+
+    inline envT decode(const codeT c) {
+        assert(0 <= c && c <= codeT::max);
+        envT env{};
+        for (int i = 0, v = c; i < 9; ++i) {
+            env.data[i] = cellT(v % cellT::states);
+            v /= cellT::states;
+        }
+        return env;
+    }
+
+    inline cellT decode(const codeT c, int index) {
+        assert(0 <= c && c <= codeT::max);
+        assert(0 <= index && index <= 8);
+        static constexpr int pows[9]{pow_cs(0), pow_cs(1), pow_cs(2), pow_cs(3), pow_cs(4),
+                                     pow_cs(5), pow_cs(6), pow_cs(7), pow_cs(8)};
+        return cellT((c / pows[index]) % cellT::states);
+    }
+
+    inline void for_each_code(const auto fn)
+        requires(requires { fn(codeT(0)); })
+    {
+        for (int i = 0; i < codeT::states; ++i) {
+            fn(codeT(i));
+        }
+    }
+
+    inline void test_encoding() {
+        for_each_code([](const codeT c) {
+            const envT env = decode(c);
+            verify(encode(env) == c);
+            for (int i = 0; i < 9; ++i) {
+                verify(env.data[i] == decode(c, i));
+            }
+        });
+    }
+
+    template <class T>
+    class codeT_to {
+        T m_data[codeT::states]{};
+
+    public:
+        void fill(const T v) { std::ranges::fill(m_data, v); }
+
+        T& operator[](const codeT c) { return m_data[c]; }
+        const T& operator[](const codeT c) const { return m_data[c]; }
+
+        // Note: defaulted operator== for C-arrays is buggy in MSVC.
+        friend bool operator==(const codeT_to& a, const codeT_to& b)
+            requires(std::is_same_v<T, cellT>)
+        {
+            return !std::memcmp(a.m_data, b.m_data, sizeof(m_data));
+        }
+    };
+
+    using ruleT = codeT_to<cellT>;
+
+    // TODO: also support totalistic rules.
+    class isotropic {
+        using groupT = std::span<const codeT>;
+
+        codeT_to<uint16_t> m_map{};
+        codeT m_data[codeT::states]{}; // Permutation of all codeT.
+        std::vector<groupT> m_groups{};
+
+    public:
+        isotropic(const isotropic&) = delete;
+        isotropic& operator=(const isotropic&) = delete;
+
+        // int k() const { return m_groups.size(); }
+        static constexpr int k = cellT::states == 2 ? 102 : 2862;
+
+        std::span<const groupT> groups() const { return m_groups; }
+        groupT group_for(const codeT c) const { return m_groups[m_map[c]]; }
+        codeT head_for(const codeT c) const { return m_groups[m_map[c]][0]; }
+
+        static const isotropic& get() {
+            static isotropic iso{};
+            return iso;
+        }
+
+    private:
+        explicit isotropic() noexcept /*terminates (supposed to be impossible)*/ {
+            m_groups.reserve(k);
+
+            m_map.fill(UINT16_MAX);
+            int data_pos = 0;
+            for_each_code([&](const codeT code) {
+                if (m_map[code] == UINT16_MAX) {
+                    const envT env1 = decode(code), env2 = env1.rotate();
+                    const envT env3 = env2.rotate(), env4 = env3.rotate();
+                    codeT group[8]{encode(env1), encode(env1.diag()), encode(env2), encode(env2.diag()),
+                                   encode(env3), encode(env3.diag()), encode(env4), encode(env4.diag())};
+                    std::ranges::sort(group); // v `ranges::unique()` returns range to be excluded.
+                    const std::ranges::subrange unique(group, std::ranges::unique(group).begin());
+                    assert(!unique.empty());
+
+                    m_groups.push_back(groupT(m_data + data_pos, unique.size()));
+                    const int index = m_groups.size() - 1;
+                    for (const codeT c : unique) {
+                        m_map[c] = index;
+                        m_data[data_pos++] = c;
+                    }
+                    assert(m_map[code] != UINT16_MAX);
+                }
+            });
+
+            // const int _k_ = m_groups.size(); // 2 ~ 102, 3 ~ 2862.
+            verify(data_pos == codeT::states);
+            verify(m_groups.size() == k);
+        }
+    };
+
+    inline void test_iso(const isotropic& iso = isotropic::get()) {
+        for (const auto& group : iso.groups()) {
+            for (const codeT c : group) {
+                verify(iso.group_for(c).data() == group.data());
+            }
+        }
+    }
+
+    // TODO: support frequency for cellT.
+    inline void rand_rule(ruleT& rule, std::mt19937& rand, const isotropic& iso = isotropic::get()) {
+        for (const auto& group : iso.groups()) {
+            const auto v = cellT(rand() % cellT::states);
+            for (const codeT c : group) {
+                rule[c] = v;
+            }
+        }
+    }
+
+    // Note: may trigger C6262.
+    inline ruleT rand_rule(std::mt19937& rand, const isotropic& iso = isotropic::get()) {
+        ruleT rule{};
+        rand_rule(rule, rand, iso);
+        return rule;
+    }
+
+    namespace _misc_ {
+        constexpr char to_char(const std::array<cellT, 3> arr) {
+            static_assert(pow_cs(3) <= 27);
+            const int val = arr[0] * pow_cs(0) + arr[1] * pow_cs(1) + arr[2] * pow_cs(2);
+            assert(0 <= val && val < pow_cs(3));
+            return "0123456789abcdefghijklmnopqrstuvwxyz"[val]; // Longer than necessary.
+        }
+
+        constexpr bool is_char(const char ch) {
+            if constexpr (cellT::states == 2) {
+                return '0' <= ch && ch <= '7';
+            } else {
+                constexpr char max_ch = to_char({cellT::max, cellT::max, cellT::max});
+                return ('0' <= ch && ch <= '9') || ('a' <= ch && ch <= max_ch);
+            }
+        }
+
+        constexpr std::array<cellT, 3> from_char(const char ch) {
+            int val = '0' <= ch && ch <= '9'   ? ch - '0' //
+                      : 'a' <= ch && ch <= 'z' ? 10 + (ch - 'a')
+                                               : 100;
+            assert(0 <= val && val < pow_cs(3));
+            std::array<cellT, 3> arr{};
+            for (int i = 0; i < 3; ++i) {
+                arr[i] = cellT(val % cellT::states);
+                val /= cellT::states;
+            }
+            return arr;
+        }
+
+        inline constexpr int required_size = (isotropic::k + 2) / 3;
+
+        // Due to the huge size, there's no plan to support saving arbitrary 3-state rules.
+        inline std::string to_string(const ruleT& rule, const isotropic& iso = isotropic::get()) {
+            std::string str(required_size, '\0');
+            std::array<cellT, 3> arr{};
+            int pos = 0, cnt = 0;
+            for (const auto& group : iso.groups()) {
+                arr[cnt] = rule[group[0]];
+                if (++cnt == 3) {
+                    str[pos++] = to_char(arr);
+                    arr.fill(cellT(0));
+                    cnt = 0;
+                }
+            }
+            if (cnt != 0) {
+                str[pos++] = to_char(arr);
+            }
+            assert(pos == str.size());
+            return str;
+        }
+
+        inline void from_string_unchecked(ruleT& rule, const std::string_view str,
+                                          const isotropic& iso = isotropic::get()) {
+            assert(str.size() == required_size);
+            assert(std::ranges::all_of(str, is_char));
+            std::array<cellT, 3> arr{};
+            int pos = 0, cnt = 3;
+            for (const auto& group : iso.groups()) {
+                if (cnt == 3) {
+                    arr = from_char(str[pos++]);
+                    cnt = 0;
+                }
+                const cellT cell = arr[cnt++];
+                for (const codeT c : group) {
+                    rule[c] = cell;
+                }
+            }
+        }
+
+        inline std::string_view extract_string(std::string_view& str) {
+            while (str.size() >= required_size) {
+                if (!is_char(str[0])) {
+                    str.remove_prefix(1);
+                } else {
+                    int j = 1;
+                    while (j < required_size && is_char(str[j])) {
+                        ++j;
+                    }
+                    if (j == required_size) {
+                        const char* pos = str.data();
+                        str.remove_prefix(required_size);
+                        return std::string_view(pos, required_size);
+                    } else {
+                        str.remove_prefix(j);
+                    }
+                }
+            }
+            return {};
+        }
+    } // namespace _misc_
+
+    using _misc_::to_string;
+
+    inline bool from_string(ruleT& rule, std::string_view& str, const isotropic& iso = isotropic::get()) {
+        const auto extr = _misc_::extract_string(str);
+        if (!extr.empty()) {
+            _misc_::from_string_unchecked(rule, extr, iso);
+            return true;
+        };
+        return false;
+    }
+    inline bool from_string(ruleT& rule, std::string_view&& str, const isotropic& iso = isotropic::get()) {
+        return from_string(rule, str, iso);
+    }
+
+    // Note: may trigger C6262.
+    inline std::optional<ruleT> from_string(std::string_view& str, const isotropic& iso = isotropic::get()) {
+        std::optional<ruleT> rule = std::nullopt;
+        const auto extr = _misc_::extract_string(str);
+        if (!extr.empty()) {
+            _misc_::from_string_unchecked(rule.emplace(), extr, iso);
+        };
+        return rule;
+    }
+    inline std::optional<ruleT> from_string(std::string_view&& str, const isotropic& iso = isotropic::get()) {
+        return from_string(str, iso);
+    }
+
+    inline void test_saving(std::mt19937& rand, const isotropic& iso = isotropic::get()) {
+        const ruleT rule = rand_rule(rand, iso);
+        const std::string str1 = to_string(rule, iso);
+        const std::string str2 = "abc   " + str1 + "     defg";
+        verify(from_string(str1, iso) == rule);
+        verify(from_string(str2, iso) == rule);
+    }
+
+    struct sizeT {
+        int x, y;
+
+        friend bool operator==(const sizeT&, const sizeT&) = default;
+
+        int xy() const {
+            assert((x == 0 && y == 0) || (x > 0 && y > 0));
+            return x * y;
+        }
+    };
+
+    class tileT {
+        std::unique_ptr<cellT[]> m_data = {};
+        sizeT m_size = {};
+
+    public:
+        void uninitialized_resize(const sizeT size) {
+            assert((size.x == 0 && size.y == 0) || (size.x > 0 && size.y > 0));
+            if (m_data) {
+                m_data = {};
+                m_size = {};
+            }
+            if (size.x > 0 && size.y > 0) {
+                m_data.reset(new cellT[size.xy()] /*uninitialized*/);
+                m_size = size;
+            }
+        }
+
+        tileT() noexcept = default;
+        explicit tileT(const sizeT size, const cellT c = cellT(0)) {
+            uninitialized_resize(size);
+            if (m_data) {
+                std::ranges::fill_n(m_data.get(), size.xy(), c);
+            }
+        }
+
+        tileT(const tileT& other) {
+            uninitialized_resize(other.m_size);
+            if (m_data) {
+                std::ranges::copy_n(other.m_data.get(), other.m_size.xy(), m_data.get());
+            }
+        }
+        tileT(tileT&& other) noexcept {
+            m_data = std::exchange(other.m_data, {});
+            m_size = std::exchange(other.m_size, {});
+        }
+
+        void swap(tileT& other) noexcept {
+            std::swap(m_data, other.m_data);
+            std::swap(m_size, other.m_size);
+        }
+        void assign(tileT&& other) noexcept { swap(other); }
+
+        tileT& operator=(const tileT& other) {
+            assign(tileT(other));
+            return *this;
+        }
+        tileT& operator=(tileT&& other) noexcept {
+            assign(std::move(other));
+            return *this;
+        }
+
+        bool empty() const { return !m_data; }
+        sizeT size() const { return m_size; }
+        int area() const { return m_size.xy(); }
+
+        std::span<const cellT> data() const { return std::span<const cellT>(m_data.get(), m_size.xy()); }
+        std::span<cellT> data() { return std::span<cellT>(m_data.get(), m_size.xy()); }
+
+        friend bool operator==(const tileT& a, const tileT& b) {
+            // Note: memcmp is not guaranteed to support (nullptr, nullptr, 0).
+            return a.m_size == b.m_size && (!a.m_data || !std::memcmp(a.m_data.get(), b.m_data.get(), a.m_size.xy()));
+        }
+
+        void clear() { assign({}); }
+        void fill(const cellT c = cellT(0)) {
+            if (m_data) {
+                std::ranges::fill_n(m_data.get(), m_size.xy(), c);
+            }
+        }
+        void resize(const sizeT size, const cellT c = cellT(0)) {
+            if (m_size != size) {
+                uninitialized_resize(size);
+                fill(c);
+            }
+        }
+
+        // As torus space.
+        void run(const ruleT& rule) {
+            assert(m_data);
+            if (!m_data) {
+                return;
+            }
+
+            std::vector<cellT> buffer(m_size.x * 3);
+            cellT* const first_line = buffer.data();
+            cellT* prev = first_line + m_size.x;
+            cellT* curr = prev + m_size.x;
+
+            cellT* const data = m_data.get();
+            std::ranges::copy_n(data, m_size.x, first_line);
+            std::ranges::copy_n(data + m_size.x * (m_size.y - 1), m_size.x, prev);
+            for (int y = 0; y < m_size.y; ++y) {
+                cellT* const line = data + m_size.x * y;
+                cellT* const next = y == m_size.y - 1 ? first_line : line + m_size.x;
+                std::ranges::copy_n(line, m_size.x, curr);
+                for (int x = 0; x < m_size.x; ++x) {
+                    const int xl = x == 0 ? m_size.x - 1 : x - 1;
+                    const int xr = x == m_size.x - 1 ? 0 : x + 1;
+                    line[x] = rule[encode({prev[xl], prev[x], prev[xr], //
+                                           curr[xl], curr[x], curr[xr], //
+                                           next[xl], next[x], next[xr]})];
+                }
+                std::swap(prev, curr); // Then prev contains the data of this line.
+            }
+        }
+    };
+
+    // TODO: support frequency for cellT.
+    inline tileT rand_tile(const sizeT size, std::mt19937& rand) {
+        tileT tile(size);
+        if (!tile.empty()) {
+            std::ranges::generate(tile.data(), [&rand] { return cellT(rand() % cellT::states); });
+        }
+        return tile;
+    }
+
+    inline void test_run(std::mt19937& rand) {
+        const tileT test1 = rand_tile({123, 123}, rand);
+        tileT test2 = test1;
+
+        ruleT copy_s{};
+        for_each_code([&copy_s](const codeT c) { copy_s[c] = decode(c, 4); });
+        test2.run(copy_s);
+        verify(test1 == test2);
+    }
+
+    inline void test_all(std::mt19937& rand, const isotropic& iso = isotropic::get()) {
+        test_encoding();
+        test_iso(iso);
+        test_saving(rand, iso);
+        test_run(rand);
+    }
+
+} // namespace iso3
+
+// #ifdef _MSC_VER
+// #pragma warning(pop)
+// #endif // _MSC_VER
