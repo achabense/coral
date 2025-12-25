@@ -10,6 +10,7 @@
 #include <random>
 #include <span>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -58,7 +59,8 @@ namespace iso3 {
     }
     using _codeT_::codeT;
 
-    // Note: the encoding must not be changed, as `to_string(ruleT)` depends on it.
+    // Note: the encoding must not be changed, as `to_string(ruleT)` depends on it (actually the order of `isotropic::groups()`).
+    // (It's possible to remove the dependency by defining a separate sampling order, but that's costly...)
     inline codeT encode(const envT env) {
         const auto& [q, w, e, a, s, d, z, x, c] = env.data;
         const int v = q * pow_cs(0) + w * pow_cs(1) + e * pow_cs(2) + a * pow_cs(3) + s * pow_cs(4) + d * pow_cs(5) +
@@ -198,6 +200,8 @@ namespace iso3 {
     }
 
     // TODO: support frequency for cellT.
+    // Note: sizeof(std::mt19937) = 5000 in MSVC (about twice the necessary size)...
+    // Related: https://github.com/microsoft/STL/issues/5198
     inline void rand_rule(ruleT& rule, std::mt19937& rand, const isotropic& iso = isotropic::get()) {
         for (const auto& group : iso.groups()) {
             const auto v = cellT(rand() % cellT::states);
@@ -337,13 +341,15 @@ namespace iso3 {
     // inline std::optional<ruleT> from_string(std::string_view&& str, const isotropic& iso = isotropic::get());
 
     inline void test_saving(std::mt19937& rand, const isotropic& iso = isotropic::get()) {
-        std::unique_ptr<ruleT[]> rules(new ruleT[3]{});
-        ruleT &a = rules[0], &b = rules[1], &c = rules[2];
+        std::unique_ptr<ruleT[]> rules(new ruleT[2]{});
+        ruleT &a = rules[0], &b = rules[1];
         rand_rule(a, rand, iso);
         const std::string str1 = to_string(a, iso);
         const std::string str2 = "abc   " + str1 + "     defg";
         verify(from_string(b, str1, iso) && b == a);
-        verify(from_string(c, str2, iso) && c == a);
+        verify(from_string(b, str2, iso) && b == a);
+        // TODO: should also test with predefined rule string.
+        // a = ...; const char* str3 = ...; verify(from_string(b, str3, iso) && b == a);
     }
 
     struct sizeT {
@@ -399,6 +405,7 @@ namespace iso3 {
         }
         void assign(tileT&& other) noexcept { swap(other); }
 
+        // TODO: copy_n() if possible.
         tileT& operator=(const tileT& other) {
             assign(tileT(other));
             return *this;
@@ -417,6 +424,7 @@ namespace iso3 {
 
         friend bool operator==(const tileT& a, const tileT& b) {
             // Note: memcmp is not guaranteed to support (nullptr, nullptr, 0).
+            static_assert(sizeof(cellT) == 1);
             return a.m_size == b.m_size && (!a.m_data || !std::memcmp(a.m_data.get(), b.m_data.get(), a.m_size.xy()));
         }
 
@@ -472,7 +480,9 @@ namespace iso3 {
                 return;
             }
 
-            // q*1 + w*3 + e*9 /= 3 -> w*1 + e*3
+            // l*1 + (q*3 + w*9) <- l (q*1 + w*3 + e*9) r -> (w*1 + e*3) + r*9
+            // [0] -> [x-1]: (q*1 + w*3 + e*9) -> (w*1 + e*3) ~ "/3" (current impl)
+            // [0] <- [x-1]: (q*1 + w*3 + e*9) -> (q*3 + w*9) ~ "%9*3" (also a single mapping; maybe more efficient?)
             using packT = uint8_t;
             static constexpr packT div3[27]{0, 0, 0, 1, 1, 1, 2, 2, 2, //
                                             3, 3, 3, 4, 4, 4, 5, 5, 5, //
@@ -530,16 +540,16 @@ namespace iso3 {
     inline tileT rand_tile(const sizeT size, std::mt19937&& rand) { return rand_tile(size, rand); }
 
     inline void test_run(std::mt19937& rand) {
-        const tileT test1 = rand_tile({123, 123}, rand);
-        std::unique_ptr<ruleT> copy_s(new ruleT{});
-        for_each_code([&copy_s = *copy_s](const codeT c) { copy_s[c] = decode(c, 4); });
-        tileT test2 = test1;
-        test2.run(*copy_s);
-        verify(test1 == test2);
+        std::unique_ptr<ruleT> identity(new ruleT{});
+        for_each_code([&identity = *identity](const codeT c) { identity[c] = decode(c, 4); });
+
+        const tileT a = rand_tile({123, 123}, rand);
+        tileT b = a;
+        b.run(*identity);
+        verify(b == a);
         if constexpr (cellT::states == 3) {
-            tileT test3 = test1;
-            test3.run_ex(*copy_s);
-            verify(test3 == test1);
+            b.run_ex(*identity);
+            verify(b == a);
         }
     }
 

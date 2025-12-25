@@ -171,7 +171,7 @@ public:
     // TODO: support find-group & to-random-group & to-top.
     // std::optional<codeT> to_group;
 
-    std::optional<ruleT> to_rule = std::nullopt;
+    std::optional<ruleT> to_rule = std::nullopt; // TODO: use ruleT + bool instead?
     bool reset = false;
     bool restart = false;
     bool to_random = false;
