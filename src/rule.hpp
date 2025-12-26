@@ -368,35 +368,15 @@ namespace iso3 {
         sizeT m_size = {};
 
     public:
-        void uninitialized_resize(const sizeT size) {
+        bool _prepare(const sizeT size) {
             assert((size.x == 0 && size.y == 0) || (size.x > 0 && size.y > 0));
-            if (m_data) {
-                m_data = {};
-                m_size = {};
-            }
+            assert(!m_data && m_size.x == 0 && m_size.y == 0);
             if (size.x > 0 && size.y > 0) {
                 m_data.reset(new cellT[size.xy()] /*uninitialized*/);
                 m_size = size;
+                return true;
             }
-        }
-
-        tileT() noexcept = default;
-        explicit tileT(const sizeT size, const cellT c = cellT(0)) {
-            uninitialized_resize(size);
-            if (m_data) {
-                std::ranges::fill_n(m_data.get(), size.xy(), c);
-            }
-        }
-
-        tileT(const tileT& other) {
-            uninitialized_resize(other.m_size);
-            if (m_data) {
-                std::ranges::copy_n(other.m_data.get(), other.m_size.xy(), m_data.get());
-            }
-        }
-        tileT(tileT&& other) noexcept {
-            m_data = std::exchange(other.m_data, {});
-            m_size = std::exchange(other.m_size, {});
+            return false;
         }
 
         void swap(tileT& other) noexcept {
@@ -405,17 +385,30 @@ namespace iso3 {
         }
         void assign(tileT&& other) noexcept { swap(other); }
 
-        tileT& operator=(const tileT& other) {
-            if (m_size != other.m_size) {
-                uninitialized_resize(other.m_size);
-            }
-            if (m_data) {
+        tileT() noexcept = default;
+        tileT(tileT&& other) noexcept { swap(other); }
+        tileT(const tileT& other) {
+            if (_prepare(other.m_size)) {
                 std::ranges::copy_n(other.m_data.get(), other.m_size.xy(), m_data.get());
             }
+        }
+
+        explicit tileT(const sizeT size, const cellT c = cellT(0)) {
+            if (_prepare(size)) {
+                std::ranges::fill_n(m_data.get(), m_size.xy(), c);
+            }
+        }
+
+        tileT& operator=(tileT&& other) noexcept {
+            swap(other);
             return *this;
         }
-        tileT& operator=(tileT&& other) noexcept {
-            assign(std::move(other));
+        tileT& operator=(const tileT& other) {
+            if (m_size != other.m_size) {
+                assign(tileT(other));
+            } else if (m_data) {
+                std::ranges::copy_n(other.m_data.get(), other.m_size.xy(), m_data.get());
+            }
             return *this;
         }
 
@@ -432,7 +425,10 @@ namespace iso3 {
             return a.m_size == b.m_size && (!a.m_data || !std::memcmp(a.m_data.get(), b.m_data.get(), a.m_size.xy()));
         }
 
-        void clear() { assign({}); }
+        void clear() noexcept {
+            m_data = {};
+            m_size = {};
+        }
         void fill(const cellT c = cellT(0)) {
             if (m_data) {
                 std::ranges::fill_n(m_data.get(), m_size.xy(), c);
@@ -440,8 +436,7 @@ namespace iso3 {
         }
         void resize(const sizeT size, const cellT c = cellT(0)) {
             if (m_size != size) {
-                uninitialized_resize(size);
-                fill(c);
+                assign(tileT(size, c));
             }
         }
 
@@ -534,8 +529,8 @@ namespace iso3 {
 
     // TODO: support frequency for cellT.
     inline tileT rand_tile(const sizeT size, std::mt19937& rand) {
-        tileT tile(size);
-        if (!tile.empty()) {
+        tileT tile{};
+        if (tile._prepare(size)) {
             std::ranges::generate(tile.data(), [&rand] { return cellT(rand() % cellT::states); });
         }
         return tile;

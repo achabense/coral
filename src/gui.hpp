@@ -144,13 +144,12 @@ class main_data {
 
     ImVec2 image_size() const { return ImVec2(m_init.size().x, m_init.size().y); }
 
-    // TODO: require visible area to exceed certain limit.
     void image(tile_with_texture& tile, const ruleT& rule, const int id, const bool can_select) {
         ImGui::Dummy(image_size());
         bool active = false;
         if (ImGui::IsItemVisible()) {
             ImDrawList& draw = *ImGui::GetWindowDrawList();
-            const auto min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
+            const ImVec2 min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
             bool hovered = false;
             if (imgui_IsItemVisibleEx(0.15f)) {
                 if (tile.empty()) {
@@ -235,13 +234,12 @@ public:
 
         ImGui::Separator();
 
-        // TODO: which scrolling mode to use?
-        // It's still possible to scroll to position in page mode by dragging from the scrollbar.
+        // TODO: document scrolling behavior & support ctrl+click to scroll to position.
+        // It's possible to scroll to position in page mode by dragging from the scrollbar.
         // However, if users are unware of this, they will have trouble due to the huge list size.
-        // And the default min grab size makes the scrollbar hard to click. (Can be controlled with `GetStyle().GrabMinSize`.)
-        // However, scrolling by page is indeed the desired behavior sometimes...
+        // And the default min grab size makes the scrollbar hard to click. (Controlled by `GetStyle().GrabMinSize`.)
         // Related: https://github.com/ocornut/imgui/issues/8002
-        ImGui::GetIO().ConfigScrollbarScrollByPage = false; // Always scroll to position.
+        // ImGui::GetIO().ConfigScrollbarScrollByPage = false; // Always scroll to position.
 
         if (ImGui::BeginChild("Groups")) {
             const int group_spacing = item_spacing * 3;
@@ -292,6 +290,8 @@ private:
             if (!iso3::from_string(to_rule.emplace(), ImGui::GetClipboardText())) {
                 to_rule.reset();
                 m_message.set("Nothing to paste.");
+            } else {
+                // TODO: the effect can be unobvious if the rule equals `m_rule`.
             }
         }
         if (to_rule) {

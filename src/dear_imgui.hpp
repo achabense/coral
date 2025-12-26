@@ -82,8 +82,8 @@ public:
     extra_message(const extra_message&) = delete;
     extra_message& operator=(const extra_message&) = delete;
 
-    void set(std::string&& s, double t = 0.5 /*sec*/) {
-        str = std::move(s);
+    void set(const char* s, double t = 0.5 /*sec*/) {
+        str = s;
         time = t;
         pos.reset();
         str_size.reset();
