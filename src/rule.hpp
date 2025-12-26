@@ -405,9 +405,13 @@ namespace iso3 {
         }
         void assign(tileT&& other) noexcept { swap(other); }
 
-        // TODO: copy_n() if possible.
         tileT& operator=(const tileT& other) {
-            assign(tileT(other));
+            if (m_size != other.m_size) {
+                uninitialized_resize(other.m_size);
+            }
+            if (m_data) {
+                std::ranges::copy_n(other.m_data.get(), other.m_size.xy(), m_data.get());
+            }
             return *this;
         }
         tileT& operator=(tileT&& other) noexcept {

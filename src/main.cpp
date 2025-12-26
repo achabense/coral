@@ -47,7 +47,7 @@ static void update_texture(SDL_Texture* texture, const tileT& tile) {
 ImTextureID texture_create(const tileT& tile) {
     assert(window && renderer && !tile.empty());
     const auto size = tile.size();
-    const auto format = SDL_PIXELFORMAT_RGBA32; // For compatibility with `IM_COL32(...)`.
+    constexpr SDL_PixelFormat format = SDL_PIXELFORMAT_RGBA32; // For compatibility with `IM_COL32(...)`.
     SDL_Texture* texture = SDL_CreateTexture(renderer, format, SDL_TEXTUREACCESS_STREAMING, size.x, size.y);
     if (!texture) {
         exit_failure();
@@ -116,11 +116,14 @@ int main(int, char**) {
         bool quit = false;
         SDL_Event event{};
         while (SDL_PollEvent(&event)) {
-            ImGui_ImplSDL3_ProcessEvent(&event);
             if (event.type == SDL_EVENT_QUIT) {
                 quit = true;
                 break;
+            } else if ((event.type == SDL_EVENT_KEY_DOWN || event.type == SDL_EVENT_KEY_UP) &&
+                       event.key.key == SDLK_TAB) {
+                continue; // To disable tab-related controls (especially ctrl+tab -> nav menu).
             }
+            ImGui_ImplSDL3_ProcessEvent(&event);
         }
 
         if (quit) {
@@ -148,7 +151,7 @@ int main(int, char**) {
         }
 
         constexpr int max_fps = 100; // May be further limited by vsync (like 60fps).
-        static Uint64 last = 0;
+        static Uint64 last = 0;      // Don't have to be static, but moving out of loop makes no actual benefit.
         const Uint64 now = SDL_GetTicksNS();
         const Uint64 until = last + (1000 * 1000 * 1000) /*ns*/ / max_fps;
         if (now < until) {
