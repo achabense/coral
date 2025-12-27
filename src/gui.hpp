@@ -99,8 +99,7 @@ public:
 };
 
 // Note: SDL is unable to create texture with height = 9 * codeT::states (19683 when cellT::states = 3).
-inline void render_code(const codeT code, const int scale, const ImVec2 min) {
-    ImDrawList& draw = *ImGui::GetWindowDrawList();
+inline void render_code(const codeT code, const int scale, const ImVec2 min, ImDrawList& draw) {
     const auto env = iso3::decode(code);
     for (int y = 0, i = 0; y < 3; ++y) {
         for (int x = 0; x < 3; ++x) {
@@ -110,24 +109,23 @@ inline void render_code(const codeT code, const int scale, const ImVec2 min) {
     }
 }
 
-inline bool code_button(const codeT code, const int scale = 7) {
-    constexpr ImVec2 padding = {2, 2};
-    ImGui::PushID(code);
-    const bool ret = ImGui::Button("##Code", ImVec2(scale * 3, scale * 3) + padding * 2);
-    ImGui::PopID();
+inline void code_image(const codeT code, const int scale = 7) {
+    constexpr ImVec2 border = {1, 1};
+    ImGui::Dummy(ImVec2(scale * 3, scale * 3) + border * 2);
     if (ImGui::IsItemVisible()) {
-        render_code(code, scale, ImGui::GetItemRectMin() + padding);
+        const ImVec2 min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
+        ImDrawList& draw = *ImGui::GetWindowDrawList();
+        render_code(code, scale, min + border, draw);
+        draw.AddRect(min, max, IM_COL32(180, 180, 180, 255));
     }
-    return ret;
 }
 
-inline int code_button_width(const int scale = 7) { return scale * 3 + 4; }
+inline int code_image_width(const int scale = 7) { return scale * 3 + 2 /*border*/; }
 
 // TODO: support loading list of rules.
 // TODO: support setting to game-of-life.
 // TODO: support configurable init state.
 // TODO: support undoing changes.
-// TODO: support zoom window (that can be toggled off).
 class main_data {
     using isotropic = iso3::isotropic;
 
@@ -142,14 +140,16 @@ class main_data {
     shared_popup m_popup{};
     extra_message m_message{};
 
-    ImVec2 image_size() const { return ImVec2(m_init.size().x, m_init.size().y); }
+    ImVec2 texture_size() const { return ImVec2(m_init.size().x, m_init.size().y); }
+    ImVec2 image_size() const { return texture_size() + ImVec2{2, 2} /*border*/; }
 
     void image(tile_with_texture& tile, const ruleT& rule, const int id, const bool can_select) {
-        ImGui::Dummy(image_size());
+        constexpr ImVec2 border = {1, 1};
         bool active = false;
+        ImGui::Dummy(texture_size() + border * 2);
         if (ImGui::IsItemVisible()) {
-            ImDrawList& draw = *ImGui::GetWindowDrawList();
             const ImVec2 min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
+            ImDrawList& draw = *ImGui::GetWindowDrawList();
             const bool ctrl = ImGui::GetIO().KeyCtrl;
             bool hovered = false;
             if (imgui_IsItemVisibleEx(0.15f)) {
@@ -158,17 +158,42 @@ class main_data {
                 if (tile.empty()) {
                     tile.assign(m_init);
                 }
+                // TODO: whether to run before displaying?
+                // TODO: always run if newly restarted?
                 const bool pause = _pause || (!ctrl && hovered && ImGui::IsMouseDown(ImGuiMouseButton_Left));
                 if (!pause && (_interval == 0 || (ImGui::GetFrameCount() % (_interval + 1)) == 0)) {
-                    tile.run(rule, _step); // TODO: whether to run before displaying?
+                    tile.run(rule, _step);
                 }
 
-                draw.AddImage(tile.texture(), min, max);
+                // TODO: the current ownership works, but is still risky...
+                // `tile` must not be cleared / resized after this (in this frame).
+                const ImTextureID texture = tile.texture();
+                draw.AddImage(texture, min + border, max - border);
+                // TODO: should be able to configure size & scale / toggle off the zoom window.
+                if (hovered && ImGui::IsMousePosValid() && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+                    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0, 0});
+                    if (ImGui::BeginTooltip()) {
+                        constexpr float scale = 3;
+                        const ImVec2 total = texture_size();
+                        const ImVec2 show = imgui_Min({4 * 18, 3 * 18}, total);
+                        const ImVec2 pos = imgui_Max({0, 0}, imgui_Floor(ImGui::GetMousePos() - min - show / 2));
+                        // ImGui::Image(texture, show * scale, pos / total, (pos + show) / total);
+                        ImGui::Dummy(show * scale);
+                        if (ImGui::IsItemVisible()) {
+                            ImGui::GetWindowDrawList()->AddImage(texture, ImGui::GetItemRectMin(),
+                                                                 ImGui::GetItemRectMax(), pos / total,
+                                                                 (pos + show) / total);
+                            // No need for border (will be rendered by the window).
+                        }
+                        ImGui::EndTooltip();
+                    }
+                    ImGui::PopStyleVar();
+                }
             } else {
                 draw.AddRectFilled(min, max, IM_COL32(32, 32, 32, 255));
             }
             draw.AddRect(min, max,
-                         hovered || m_popup.opened(id) ? IM_COL32_WHITE : ImGui::GetColorU32(ImGuiCol_Separator));
+                         hovered || m_popup.opened(id) ? IM_COL32_WHITE : ImGui::GetColorU32(ImGuiCol_Border));
 
             bool select = false, copy = false;
             if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
@@ -233,7 +258,7 @@ public:
 
         const int item_spacing = ImGui::GetStyle().ItemSpacing.x;
         // To align with the code-buttons below.
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + code_button_width() + item_spacing);
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + code_image_width() + item_spacing);
         image(m_tile, m_rule, /*id*/ INT_MAX, false);
 
         ImGui::Separator();
@@ -250,7 +275,7 @@ public:
         ImGui::PopStyleVar();
         if (child) {
             const int group_spacing = item_spacing * 3;
-            const int group_width = code_button_width() + item_spacing + image_size().x;
+            const int group_width = code_image_width() + item_spacing + image_size().x;
             const int avail_width = ImGui::GetContentRegionAvail().x;
             const int per_line = std::max((avail_width + group_spacing) / (group_width + group_spacing), 1);
 
@@ -264,7 +289,16 @@ public:
                 ++group_index;
 
                 // !!TODO: unfinished. Should display the current value & value-to.
-                const bool hit = code_button(group[0]);
+                code_image(group[0]);
+                if (ImGui::BeginItemTooltip()) {
+                    for (bool first = true; const codeT c : group) {
+                        if (!std::exchange(first, false)) {
+                            ImGui::SameLine(0, item_spacing);
+                        }
+                        code_image(c);
+                    }
+                    ImGui::EndTooltip();
+                }
                 ImGui::SameLine(0, item_spacing);
                 ImGui::BeginGroup();
                 for (int i = 0; i < cellT::states - 1; ++i) {
