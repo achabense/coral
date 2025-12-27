@@ -150,45 +150,49 @@ class main_data {
         if (ImGui::IsItemVisible()) {
             ImDrawList& draw = *ImGui::GetWindowDrawList();
             const ImVec2 min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
+            const bool ctrl = ImGui::GetIO().KeyCtrl;
             bool hovered = false;
             if (imgui_IsItemVisibleEx(0.15f)) {
+                active = true;
+                hovered = ImGui::IsItemHovered();
                 if (tile.empty()) {
                     tile.assign(m_init);
                 }
-                if (!_pause && (_interval == 0 || (ImGui::GetFrameCount() % (_interval + 1)) == 0)) {
+                const bool pause = _pause || (!ctrl && hovered && ImGui::IsMouseDown(ImGuiMouseButton_Left));
+                if (!pause && (_interval == 0 || (ImGui::GetFrameCount() % (_interval + 1)) == 0)) {
                     tile.run(rule, _step); // TODO: whether to run before displaying?
                 }
 
-                active = true;
-                hovered = ImGui::IsItemHovered();
                 draw.AddImage(tile.texture(), min, max);
+            } else {
+                draw.AddRectFilled(min, max, IM_COL32(32, 32, 32, 255));
             }
             draw.AddRect(min, max,
                          hovered || m_popup.opened(id) ? IM_COL32_WHITE : ImGui::GetColorU32(ImGuiCol_Separator));
 
-            bool copy = false, select = false;
+            bool select = false, copy = false;
             if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
                 m_popup.open(id);
             }
             if (m_popup.begin_popup(id)) {
-                copy |= ImGui::Selectable("Copy");
                 select |= can_select && ImGui::Selectable("Select");
+                copy |= ImGui::Selectable("Copy");
                 m_popup.end_popup();
             }
-            if (hovered && ImGui::GetIO().KeyCtrl) {
-                copy |= ImGui::Shortcut(ImGuiKey_C | ImGuiMod_Ctrl, ImGuiInputFlags_RouteAlways);
+            if (hovered && ctrl) {
                 if (can_select) {
                     ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
                     select |= ImGui::IsMouseClicked(ImGuiMouseButton_Left);
                 }
-            }
-            if (copy) {
-                ImGui::SetClipboardText(iso3::to_string(rule).c_str());
-                m_message.set("Copied.");
+                copy |= ImGui::Shortcut(ImGuiKey_C | ImGuiMod_Ctrl, ImGuiInputFlags_RouteAlways);
             }
             if (select) {
                 to_rule = rule; // For simpler sync logic.
                 m_message.set("Selected.");
+            }
+            if (copy) {
+                ImGui::SetClipboardText(iso3::to_string(rule).c_str());
+                m_message.set("Copied.");
             }
         }
         if (!active && !tile.empty()) {
@@ -241,7 +245,10 @@ public:
         // Related: https://github.com/ocornut/imgui/issues/8002
         // ImGui::GetIO().ConfigScrollbarScrollByPage = false; // Always scroll to position.
 
-        if (ImGui::BeginChild("Groups")) {
+        ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, 18.0f); // 12.0f by default.
+        const bool child = ImGui::BeginChild("Groups");
+        ImGui::PopStyleVar();
+        if (child) {
             const int group_spacing = item_spacing * 3;
             const int group_width = code_button_width() + item_spacing + image_size().x;
             const int avail_width = ImGui::GetContentRegionAvail().x;
@@ -291,7 +298,7 @@ private:
                 to_rule.reset();
                 m_message.set("Nothing to paste.");
             } else {
-                // TODO: the effect can be unobvious if the rule equals `m_rule`.
+                m_message.set("Pasted.");
             }
         }
         if (to_rule) {

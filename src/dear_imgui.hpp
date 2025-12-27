@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <optional>
@@ -23,6 +24,16 @@ extern void imgui_LockScroll();
 extern bool imgui_DoubleClickButton(const char* label, ImVec2 size = {});
 
 extern void imgui_SliderIntEx(float slider_width, const char* label, int& val, int min /*[*/, int max /*]*/);
+
+// Those defined in "imgui_internal.h" cannot be declared for use here (as they are inline functions).
+inline ImVec2 imgui_Floor(ImVec2 a) { return {std::floor(a.x), std::floor(a.y)}; }
+inline ImVec2 imgui_Ceil(ImVec2 a) { return {std::ceil(a.x), std::ceil(a.y)}; }
+inline ImVec2 imgui_Round(ImVec2 a) { return {std::round(a.x), std::round(a.y)}; }
+inline ImVec2 imgui_Min(ImVec2 a, ImVec2 b) { return {std::min(a.x, b.x), std::min(a.y, b.y)}; }
+inline ImVec2 imgui_Max(ImVec2 a, ImVec2 b) { return {std::max(a.x, b.x), std::max(a.y, b.y)}; }
+inline ImVec2 imgui_Clamp(ImVec2 a, ImVec2 min /*[*/, ImVec2 max /*]*/) {
+    return {std::clamp(a.x, min.x, max.x), std::clamp(a.y, min.y, max.y)};
+}
 
 // Can be shared across windows; doesn't rely on item id.
 class shared_popup {
@@ -100,14 +111,10 @@ public:
             constexpr ImVec2 offset = {12, 6};
             const ImVec2 total = *str_size + padding * 2;
             if (!pos) {
-                ImVec2& p = pos.emplace(offset + (ImGui::IsMousePosValid() ? ImGui::GetMousePos() : ImVec2{}));
-                // Clamp into the main window.
+                const ImVec2 p = offset + (ImGui::IsMousePosValid() ? ImGui::GetMousePos() : ImVec2{});
                 const ImVec2 min = ImGui::GetStyle().WindowPadding;
                 const ImVec2 max = ImGui::GetMainViewport()->Size - total - min;
-                if (min.x < max.x && min.y < max.y) {
-                    p.x = std::clamp(p.x, min.x, max.x);
-                    p.y = std::clamp(p.y, min.y, max.y);
-                }
+                pos = min.x < max.x && min.y < max.y ? imgui_Clamp(p, min, max) : p;
             }
             ImDrawList& draw = *ImGui::GetForegroundDrawList();
             draw.AddRectFilled(*pos, *pos + total, ImGui::GetColorU32(ImGuiCol_PopupBg));
