@@ -122,36 +122,42 @@ inline void code_image(const codeT code, const int scale = 7) {
 
 inline int code_image_width(const int scale = 7) { return scale * 3 + 2 /*border*/; }
 
+// Ring buffer.
 class rule_with_record {
-    std::vector<ruleT> m_rules{};
-    int m_pos{};
+    // There seems no way to enforce std::vector to allocate memory for exactly n objects...
+    static constexpr int m_capacity = 16;
+    std::unique_ptr<ruleT[]> m_rules{new ruleT[m_capacity]{}};
+    int m_size = 1; // Record size. (Initially with a single ruleT{}.)
+    int m_0 = 0;    // Position of [0].
+    int m_pos = 0;  // Position of the current rule (relative to m_0).
+
+    ruleT& at(int pos) { return m_rules[(m_0 + pos) % m_capacity]; }
 
 public:
+    rule_with_record() = default;
     rule_with_record(const rule_with_record&) = delete;
     rule_with_record& operator=(const rule_with_record&) = delete;
-    rule_with_record() {
-        m_rules.reserve(20);
-        m_rules.emplace_back();
-        m_pos = 0;
-    }
 
-    bool has_next() const { return m_pos + 1 < m_rules.size(); }
+    bool has_next() const { return m_pos < m_size - 1; }
     bool has_prev() const { return m_pos > 0; }
-    void to_next() { m_pos = std::min(m_pos + 1, (int)m_rules.size() - 1); }
+    void to_next() { m_pos = std::min(m_pos + 1, m_size - 1); }
     void to_prev() { m_pos = std::max(m_pos - 1, 0); }
 
-    ruleT& get() { return m_rules[m_pos]; }
+    ruleT& get() { return at(m_pos); }
     void set(const ruleT& rule) {
-        assert(0 <= m_pos && m_pos < m_rules.size());
-        m_rules.resize(m_pos + 1);
-        if (m_rules.back() != rule) {
-            m_rules.push_back(rule);
-            if (m_rules.size() == m_rules.capacity()) {
-                // TODO: -> ring buffer.
-                m_rules.erase(m_rules.begin(), m_rules.begin() + m_rules.capacity() / 2);
+        assert(1 <= m_size && m_size <= m_capacity);
+        assert(0 <= m_0 && m_0 < m_capacity);
+        assert(0 <= m_pos && m_pos < m_size);
+        if (at(m_pos) != rule) {
+            m_size = m_pos + 1; // Discard rules after the current rule.
+            if (m_size < m_capacity) {
+                ++m_size;
+            } else if (++m_0 == m_capacity) { // Discard the oldest rule.
+                m_0 = 0;
             }
+            m_pos = m_size - 1;
+            at(m_pos) = rule;
         }
-        m_pos = m_rules.size() - 1;
     }
 };
 
