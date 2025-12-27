@@ -122,16 +122,49 @@ inline void code_image(const codeT code, const int scale = 7) {
 
 inline int code_image_width(const int scale = 7) { return scale * 3 + 2 /*border*/; }
 
+class rule_with_record {
+    std::vector<ruleT> m_rules{};
+    int m_pos{};
+
+public:
+    rule_with_record(const rule_with_record&) = delete;
+    rule_with_record& operator=(const rule_with_record&) = delete;
+    rule_with_record() {
+        m_rules.reserve(20);
+        m_rules.emplace_back();
+        m_pos = 0;
+    }
+
+    bool has_next() const { return m_pos + 1 < m_rules.size(); }
+    bool has_prev() const { return m_pos > 0; }
+    void to_next() { m_pos = std::min(m_pos + 1, (int)m_rules.size() - 1); }
+    void to_prev() { m_pos = std::max(m_pos - 1, 0); }
+
+    ruleT& get() { return m_rules[m_pos]; }
+    void set(const ruleT& rule) {
+        assert(0 <= m_pos && m_pos < m_rules.size());
+        m_rules.resize(m_pos + 1);
+        if (m_rules.back() != rule) {
+            m_rules.push_back(rule);
+            if (m_rules.size() == m_rules.capacity()) {
+                // TODO: -> ring buffer.
+                m_rules.erase(m_rules.begin(), m_rules.begin() + m_rules.capacity() / 2);
+            }
+        }
+        m_pos = m_rules.size() - 1;
+    }
+};
+
 // TODO: support loading list of rules.
 // TODO: support setting to game-of-life.
 // TODO: support configurable init state.
-// TODO: support undoing changes.
+// TODO: support adding to temp list.
 class main_data {
     using isotropic = iso3::isotropic;
 
-    ruleT m_rule{};
+    rule_with_record m_rule{};
     tile_with_texture m_tile{};
-    std::vector<tile_with_texture> m_preview{};
+    std::vector<tile_with_texture> m_preview{}; // TODO: wasteful.
 
     std::mt19937 m_rand{uint32_t(std::time(0))};
 
@@ -250,8 +283,14 @@ public:
     bool randomize = false;
     bool paste = false;
 
+    bool has_prev() const { return m_rule.has_prev(); }
+    bool has_next() const { return m_rule.has_next(); }
+    bool to_prev = false;
+    bool to_next = false;
+
     void display() {
         flush();
+        ruleT& rule = m_rule.get(); // TODO: working but risky... (Will be restored finally.)
 
         m_popup.set_popup_id("Options");
         m_popup.begin();
@@ -259,7 +298,7 @@ public:
         const int item_spacing = ImGui::GetStyle().ItemSpacing.x;
         // To align with the code-buttons below.
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + code_image_width() + item_spacing);
-        image(m_tile, m_rule, /*id*/ INT_MAX, false);
+        image(m_tile, rule, /*id*/ INT_MAX, false);
 
         ImGui::Separator();
 
@@ -302,12 +341,12 @@ public:
                 ImGui::SameLine(0, item_spacing);
                 ImGui::BeginGroup();
                 for (int i = 0; i < cellT::states - 1; ++i) {
-                    iso3::increase(m_rule, group);
-                    image(m_preview[preview_index], m_rule, preview_index, true);
+                    iso3::increase(rule, group);
+                    image(m_preview[preview_index], rule, preview_index, true);
                     ++preview_index;
                 }
                 ImGui::EndGroup();
-                iso3::increase(m_rule, group); // Restored.
+                iso3::increase(rule, group); // Restored.
             }
         }
         ImGui::EndChild();
@@ -320,12 +359,10 @@ private:
     void flush() {
         // TODO: whether to compare the rule (same -> no restart)?
         if (std::exchange(reset, false)) {
-            m_rule.fill({});
-            restart = true;
+            to_rule.emplace();
         }
         if (std::exchange(randomize, false)) {
-            iso3::randomize(m_rule, m_rand);
-            restart = true;
+            iso3::randomize(to_rule.emplace(m_rule.get()), m_rand);
         }
         if (std::exchange(paste, false)) {
             if (!iso3::from_string(to_rule.emplace(), ImGui::GetClipboardText())) {
@@ -336,8 +373,16 @@ private:
             }
         }
         if (to_rule) {
-            m_rule = *to_rule;
+            m_rule.set(*to_rule);
             to_rule.reset();
+            restart = true;
+        }
+        if (std::exchange(to_prev, false)) {
+            m_rule.to_prev();
+            restart = true;
+        }
+        if (std::exchange(to_next, false)) {
+            m_rule.to_next();
             restart = true;
         }
         if (std::exchange(restart, false)) {
@@ -367,6 +412,14 @@ inline void frame_main(main_data& data) {
         data.paste = imgui_DoubleClickButton("Paste");
         ImGui::SameLine();
         ImGui::Text("%d fps", (int)std::round(ImGui::GetIO().Framerate));
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!data.has_prev());
+        data.to_prev = ImGui::Button("Undo");
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!data.has_next());
+        data.to_next = ImGui::Button("Redo");
+        ImGui::EndDisabled();
         ImGui::SameLine();
         data.restart = ImGui::Button("Restart");
         ImGui::SameLine();
