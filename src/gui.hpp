@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ctime>
+#include <unordered_map>
 
 #include "dear_imgui.hpp"
 
@@ -165,12 +166,17 @@ public:
 // TODO: support setting to game-of-life.
 // TODO: support configurable init state.
 // TODO: support adding to temp list.
+// TODO: support editable window.
 class main_data {
     using isotropic = iso3::isotropic;
 
     rule_with_record m_rule{};
-    tile_with_texture m_tile{};
-    std::vector<tile_with_texture> m_preview{}; // TODO: wasteful.
+
+    struct blobT {
+        tile_with_texture tile{};
+        bool active = false;
+    };
+    std::unordered_map<int /*id*/, blobT> m_preview{};
 
     std::mt19937 m_rand{uint32_t(std::time(0))};
 
@@ -182,9 +188,8 @@ class main_data {
     ImVec2 texture_size() const { return ImVec2(m_init.size().x, m_init.size().y); }
     ImVec2 image_size() const { return texture_size() + ImVec2{2, 2} /*border*/; }
 
-    void image(tile_with_texture& tile, const ruleT& rule, const int id, const bool can_select) {
+    void image(const ruleT& rule, const int id, const bool can_select) {
         constexpr ImVec2 border = {1, 1};
-        bool active = false;
         ImGui::Dummy(texture_size() + border * 2);
         if (ImGui::IsItemVisible()) {
             const ImVec2 min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
@@ -192,8 +197,12 @@ class main_data {
             const bool ctrl = ImGui::GetIO().KeyCtrl;
             bool hovered = false;
             if (imgui_IsItemVisibleEx(0.15f)) {
-                active = true;
                 hovered = ImGui::IsItemHovered();
+
+                blobT& blob = m_preview[id];
+                assert(!blob.active);
+                blob.active = true;
+                tile_with_texture& tile = blob.tile;
                 if (tile.empty()) {
                     tile.assign(m_init);
                 }
@@ -259,18 +268,12 @@ class main_data {
                 m_message.set("Copied.");
             }
         }
-        if (!active && !tile.empty()) {
-            tile.clear();
-        }
     }
 
     // Too large to be stack-allocated.
     main_data(const main_data&) = delete;
     main_data& operator=(const main_data&) = delete;
-    main_data() {
-        iso3::test_all(m_rand);
-        m_preview.resize(isotropic::k * (cellT::states - 1));
-    }
+    main_data() { iso3::test_all(m_rand); }
 
 public:
     static auto make_unique() { return std::unique_ptr<main_data>(new main_data{}); }
@@ -304,7 +307,8 @@ public:
         const int item_spacing = ImGui::GetStyle().ItemSpacing.x;
         // To align with the code-buttons below.
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + code_image_width() + item_spacing);
-        image(m_tile, rule, /*id*/ INT_MAX, false);
+        int preview_index = 0;
+        image(rule, preview_index++, false);
 
         ImGui::Separator();
 
@@ -324,7 +328,7 @@ public:
             const int avail_width = ImGui::GetContentRegionAvail().x;
             const int per_line = std::max((avail_width + group_spacing) / (group_width + group_spacing), 1);
 
-            int group_index = 0, preview_index = 0;
+            int group_index = 0;
             for (const auto& group : isotropic::get().groups()) {
                 if (group_index % per_line != 0) {
                     ImGui::SameLine(0, group_spacing);
@@ -348,8 +352,7 @@ public:
                 ImGui::BeginGroup();
                 for (int i = 0; i < cellT::states - 1; ++i) {
                     iso3::increase(rule, group);
-                    image(m_preview[preview_index], rule, preview_index, true);
-                    ++preview_index;
+                    image(rule, preview_index++, true);
                 }
                 ImGui::EndGroup();
                 iso3::increase(rule, group); // Restored.
@@ -359,6 +362,13 @@ public:
 
         m_popup.end();
         m_message.display();
+
+        // I've no clue whether this is truly allowed...
+        // When used by algorithms, a "Predicate" is not allowed to modify input.
+        // https://eel.is/c++draft/algorithms.requirements
+        // std::erase_if(map) uses the same term, but it's defined by equivalent behavior (which allows modification).
+        // https://eel.is/c++draft/unord.map.erasure
+        std::erase_if(m_preview, [](auto& blob) { return !std::exchange(blob.second.active, false); });
     }
 
 private:
@@ -392,13 +402,8 @@ private:
             restart = true;
         }
         if (std::exchange(restart, false)) {
-            if (!m_tile.empty()) {
-                m_tile.assign(m_init);
-            }
-            for (auto& preview : m_preview) {
-                if (!preview.empty()) {
-                    preview.assign(m_init);
-                }
+            for (auto& [_, blob] : m_preview) {
+                blob.tile.assign(m_init);
             }
         }
     }
