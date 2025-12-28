@@ -162,33 +162,49 @@ public:
     }
 };
 
-// TODO: support loading list of rules.
-// TODO: support setting to game-of-life.
-// TODO: support configurable init state.
-// TODO: support adding to temp list.
-// TODO: support editable window.
-class main_data {
-    using isotropic = iso3::isotropic;
-
-    rule_with_record m_rule{};
-
+class preview_group {
+    // TODO: use vector if possible. (Can guarantee speed by requiring increasing id.)
     struct blobT {
         tile_with_texture tile{};
         bool active = false;
     };
-    std::unordered_map<int /*id*/, blobT> m_preview{};
 
-    std::mt19937 m_rand{uint32_t(std::time(0))};
-
+    std::unordered_map<int /*id*/, blobT> m_blobs{};
     const tileT m_init{iso3::rand_tile({256, 196}, std::mt19937{0})};
 
-    shared_popup m_popup{};
-    extra_message m_message{};
-
     ImVec2 texture_size() const { return ImVec2(m_init.size().x, m_init.size().y); }
-    ImVec2 image_size() const { return texture_size() + ImVec2{2, 2} /*border*/; }
 
-    void image(const ruleT& rule, const int id, const bool can_select) {
+public:
+    preview_group() = default;
+    preview_group(const preview_group&) = delete;
+    preview_group& operator=(const preview_group&) = delete;
+
+    void begin() {
+        assert(std::ranges::all_of(m_blobs, [](const auto& blob) { return !blob.second.active; }));
+    }
+    void end() {
+        // I've no clue whether this is truly allowed...
+        // When used by algorithms, a "Predicate" is not allowed to modify input.
+        // https://eel.is/c++draft/algorithms.requirements
+        // std::erase_if(map) uses the same term, but it's defined by equivalent behavior (which allows modification).
+        // https://eel.is/c++draft/unord.map.erasure
+        std::erase_if(m_blobs, [](auto& blob) { return !std::exchange(blob.second.active, false); });
+    }
+    void restart_all() {
+        for (auto& [_, blob] : m_blobs) {
+            blob.tile.assign(m_init);
+        }
+    }
+
+    struct speedT {
+        bool pause = false;
+        int step = 1;
+        int interval = 0; // Frame based. TODO: -> time based?
+    };
+
+    ImVec2 image_size() const { return texture_size() + ImVec2{2, 2} /*border*/; }
+    void image(const ruleT& rule, const speedT& speed, const int id, shared_popup& m_popup, extra_message& m_message,
+               std::optional<ruleT>* to_rule = nullptr) {
         constexpr ImVec2 border = {1, 1};
         ImGui::Dummy(texture_size() + border * 2);
         if (ImGui::IsItemVisible()) {
@@ -199,7 +215,7 @@ class main_data {
             if (imgui_IsItemVisibleEx(0.15f)) {
                 hovered = ImGui::IsItemHovered();
 
-                blobT& blob = m_preview[id];
+                blobT& blob = m_blobs[id];
                 assert(!blob.active);
                 blob.active = true;
                 tile_with_texture& tile = blob.tile;
@@ -208,9 +224,9 @@ class main_data {
                 }
                 // TODO: whether to run before displaying?
                 // TODO: always run if newly restarted?
-                const bool pause = _pause || (!ctrl && hovered && ImGui::IsMouseDown(ImGuiMouseButton_Left));
-                if (!pause && (_interval == 0 || (ImGui::GetFrameCount() % (_interval + 1)) == 0)) {
-                    tile.run(rule, _step);
+                const bool pause = speed.pause || (!ctrl && hovered && ImGui::IsMouseDown(ImGuiMouseButton_Left));
+                if (!pause && (speed.interval == 0 || (ImGui::GetFrameCount() % (speed.interval + 1)) == 0)) {
+                    tile.run(rule, speed.step);
                 }
 
                 // TODO: the current ownership works, but is still risky...
@@ -240,9 +256,11 @@ class main_data {
             } else {
                 draw.AddRectFilled(min, max, IM_COL32(32, 32, 32, 255));
             }
+            // TODO: working but need to use a separate id for popup in the future.
             draw.AddRect(min, max,
                          hovered || m_popup.opened(id) ? IM_COL32_WHITE : ImGui::GetColorU32(ImGuiCol_Border));
 
+            const bool can_select = to_rule;
             bool select = false, copy = false;
             if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
                 m_popup.open(id);
@@ -260,7 +278,7 @@ class main_data {
                 copy |= ImGui::Shortcut(ImGuiKey_C | ImGuiMod_Ctrl, ImGuiInputFlags_RouteAlways);
             }
             if (select) {
-                to_rule = rule; // For simpler sync logic.
+                *to_rule = rule; // For simpler sync logic.
                 m_message.set("Selected.");
             }
             if (copy) {
@@ -269,6 +287,20 @@ class main_data {
             }
         }
     }
+};
+
+// TODO: support loading list of rules.
+// TODO: support setting to game-of-life.
+// TODO: support configurable init state.
+// TODO: support adding to temp list.
+class main_data {
+    using isotropic = iso3::isotropic;
+
+    rule_with_record m_rule{};
+    preview_group m_preview{};
+    std::mt19937 m_rand{uint32_t(std::time(0))};
+    shared_popup m_popup{};
+    extra_message m_message{};
 
     // Too large to be stack-allocated.
     main_data(const main_data&) = delete;
@@ -279,9 +311,7 @@ public:
     static auto make_unique() { return std::unique_ptr<main_data>(new main_data{}); }
 
     // TODO: should not be public.
-    bool _pause = false;
-    int _step = 1;
-    int _interval = 0; // Frame based. TODO: -> time based?
+    preview_group::speedT speed{.pause = false, .step = 1, .interval = 0};
 
     // TODO: support find-group & to-random-group & to-top.
     // std::optional<codeT> to_group;
@@ -303,12 +333,12 @@ public:
 
         m_popup.set_popup_id("Options");
         m_popup.begin();
+        m_preview.begin();
 
         const int item_spacing = ImGui::GetStyle().ItemSpacing.x;
-        // To align with the code-buttons below.
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + code_image_width() + item_spacing);
         int preview_index = 0;
-        image(rule, preview_index++, false);
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + code_image_width() + item_spacing); // For alignment.
+        m_preview.image(rule, speed, preview_index++, m_popup, m_message, nullptr);
 
         ImGui::Separator();
 
@@ -324,7 +354,7 @@ public:
         ImGui::PopStyleVar();
         if (child) {
             const int group_spacing = item_spacing * 3;
-            const int group_width = code_image_width() + item_spacing + image_size().x;
+            const int group_width = code_image_width() + item_spacing + m_preview.image_size().x;
             const int avail_width = ImGui::GetContentRegionAvail().x;
             const int per_line = std::max((avail_width + group_spacing) / (group_width + group_spacing), 1);
 
@@ -352,7 +382,7 @@ public:
                 ImGui::BeginGroup();
                 for (int i = 0; i < cellT::states - 1; ++i) {
                     iso3::increase(rule, group);
-                    image(rule, preview_index++, true);
+                    m_preview.image(rule, speed, preview_index++, m_popup, m_message, &to_rule);
                 }
                 ImGui::EndGroup();
                 iso3::increase(rule, group); // Restored.
@@ -360,15 +390,9 @@ public:
         }
         ImGui::EndChild();
 
+        m_preview.end();
         m_popup.end();
         m_message.display();
-
-        // I've no clue whether this is truly allowed...
-        // When used by algorithms, a "Predicate" is not allowed to modify input.
-        // https://eel.is/c++draft/algorithms.requirements
-        // std::erase_if(map) uses the same term, but it's defined by equivalent behavior (which allows modification).
-        // https://eel.is/c++draft/unord.map.erasure
-        std::erase_if(m_preview, [](auto& blob) { return !std::exchange(blob.second.active, false); });
     }
 
 private:
@@ -402,9 +426,7 @@ private:
             restart = true;
         }
         if (std::exchange(restart, false)) {
-            for (auto& [_, blob] : m_preview) {
-                blob.tile.assign(m_init);
-            }
+            m_preview.restart_all();
         }
     }
 };
@@ -434,11 +456,11 @@ inline void frame_main(main_data& data) {
         ImGui::SameLine();
         data.restart = ImGui::Button("Restart");
         ImGui::SameLine();
-        ImGui::Checkbox("Pause", &data._pause);
+        ImGui::Checkbox("Pause", &data.speed.pause);
         ImGui::SameLine();
-        imgui_SliderIntEx(ImGui::GetFontSize() * 10, "Step", data._step, 1, 10);
+        imgui_SliderIntEx(ImGui::GetFontSize() * 10, "Step", data.speed.step, 1, 10);
         ImGui::SameLine();
-        imgui_SliderIntEx(ImGui::GetFontSize() * 10, "Interval", data._interval, 0, 10);
+        imgui_SliderIntEx(ImGui::GetFontSize() * 10, "Interval", data.speed.interval, 0, 10);
 
         ImGui::Separator();
         data.display();
