@@ -342,14 +342,11 @@ public:
 
         ImGui::Separator();
 
-        // TODO: document scrolling behavior & support ctrl+click to scroll to position.
-        // It's possible to scroll to position in page mode by dragging from the scrollbar.
-        // However, if users are unware of this, they will have trouble due to the huge list size.
-        // And the default min grab size makes the scrollbar hard to click. (Controlled by `GetStyle().GrabMinSize`.)
+        // TODO: document scrolling behavior & support scrolling with up/down.
+        // (Drag from scrollbar or press ctrl to scroll to position; otherwise will scroll by page size.)
         // Related: https://github.com/ocornut/imgui/issues/8002
-        // ImGui::GetIO().ConfigScrollbarScrollByPage = false; // Always scroll to position.
-
-        ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, 18.0f); // 12.0f by default.
+        ImGui::GetIO().ConfigScrollbarScrollByPage = !ImGui::GetIO().KeyCtrl;
+        ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, 18); // To make the scrollbar easier to click.
         const bool child = ImGui::BeginChild("Groups");
         ImGui::PopStyleVar();
         if (child) {
