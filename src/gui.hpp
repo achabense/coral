@@ -406,7 +406,9 @@ private:
             to_rule.emplace();
         }
         if (std::exchange(randomize, false)) {
-            iso3::randomize(to_rule.emplace(m_rule.get()), m_rand);
+            // !!TODO: support different modes.
+            iso3::rand_rule(to_rule.emplace(), m_rand, {64, 4, 1});
+            // iso3::randomize(to_rule.emplace(m_rule.get()), m_rand, 1.0 / 32);
         }
         if (std::exchange(paste, false)) {
             if (!iso3::from_string(to_rule.emplace(), ImGui::GetClipboardText())) {
