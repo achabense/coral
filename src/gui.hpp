@@ -166,6 +166,7 @@ class preview_group {
     // TODO: use vector if possible. (Can guarantee speed by requiring increasing id.)
     struct blobT {
         tile_with_texture tile{};
+        bool newly_restarted = false;
         bool active = false;
     };
 
@@ -193,6 +194,7 @@ public:
     void restart_all() {
         for (auto& [_, blob] : m_blobs) {
             blob.tile.assign(m_init);
+            blob.newly_restarted = true;
         }
     }
 
@@ -221,12 +223,17 @@ public:
                 tile_with_texture& tile = blob.tile;
                 if (tile.empty()) {
                     tile.assign(m_init);
+                    blob.newly_restarted = true;
                 }
                 // TODO: whether to run before displaying?
-                // TODO: always run if newly restarted?
-                const bool pause = speed.pause || (!ctrl && hovered && ImGui::IsMouseDown(ImGuiMouseButton_Left));
-                if (!pause && (speed.interval == 0 || (ImGui::GetFrameCount() % (speed.interval + 1)) == 0)) {
+                // TODO: whether to always skip the init state?
+                if (std::exchange(blob.newly_restarted, false)) {
                     tile.run(rule, speed.step);
+                } else {
+                    const bool pause = speed.pause || (!ctrl && hovered && ImGui::IsMouseDown(ImGuiMouseButton_Left));
+                    if (!pause && (speed.interval == 0 || (ImGui::GetFrameCount() % (speed.interval + 1)) == 0)) {
+                        tile.run(rule, speed.step);
+                    }
                 }
 
                 // TODO: the current ownership works, but is still risky...
@@ -254,7 +261,7 @@ public:
                     ImGui::PopStyleVar();
                 }
             } else {
-                draw.AddRectFilled(min, max, IM_COL32(32, 32, 32, 255));
+                // draw.AddRectFilled(min, max, IM_COL32(32, 32, 32, 255));
             }
             // TODO: working but need to use a separate id for popup in the future.
             draw.AddRect(min, max,
@@ -431,27 +438,29 @@ private:
 inline void frame_main(main_data& data) {
     ImGui::SetNextWindowPos(ImGui::GetMainViewport()->WorkPos);
     ImGui::SetNextWindowSize(ImGui::GetMainViewport()->WorkSize);
-    constexpr ImGuiWindowFlags main_flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
-                                            ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoBringToFrontOnFocus |
-                                            ImGuiWindowFlags_NoSavedSettings;
-    if (ImGui::Begin("Main", nullptr, main_flags)) {
-        data.reset = imgui_DoubleClickButton("Reset");
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(24, 24, 24, 255));
+    const bool window = ImGui::Begin("Main", nullptr,
+                                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoNav |
+                                         ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
+    ImGui::PopStyleColor();
+    if (window) {
+        data.reset |= imgui_DoubleClickButton("Reset");
         ImGui::SameLine();
-        data.randomize = imgui_DoubleClickButton("Random");
+        data.randomize |= imgui_DoubleClickButton("Random");
         ImGui::SameLine();
-        data.paste = imgui_DoubleClickButton("Paste");
+        data.paste |= imgui_DoubleClickButton("Paste");
         ImGui::SameLine();
         ImGui::Text("%d fps", (int)std::round(ImGui::GetIO().Framerate));
         ImGui::SameLine();
         ImGui::BeginDisabled(!data.has_prev());
-        data.to_prev = ImGui::Button("Undo");
+        data.to_prev |= ImGui::Button("Undo");
         ImGui::EndDisabled();
         ImGui::SameLine();
         ImGui::BeginDisabled(!data.has_next());
-        data.to_next = ImGui::Button("Redo");
+        data.to_next |= ImGui::Button("Redo");
         ImGui::EndDisabled();
         ImGui::SameLine();
-        data.restart = ImGui::Button("Restart");
+        data.restart |= ImGui::Button("Restart");
         ImGui::SameLine();
         ImGui::Checkbox("Pause", &data.speed.pause);
         ImGui::SameLine();
