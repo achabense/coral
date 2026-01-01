@@ -208,14 +208,18 @@ public:
     void image(const ruleT& rule, const speedT& speed, const int id, shared_popup& m_popup, extra_message& m_message,
                std::optional<ruleT>* to_rule = nullptr) {
         constexpr ImVec2 border = {1, 1};
-        ImGui::Dummy(texture_size() + border * 2);
+        ImGui::Dummy(texture_size() + border * 2); // TODO: use InvisibleButton() instead?
         if (ImGui::IsItemVisible()) {
             const ImVec2 min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
             ImDrawList& draw = *ImGui::GetWindowDrawList();
             const bool ctrl = ImGui::GetIO().KeyCtrl;
-            bool hovered = false;
+            bool hovered = false, pressed = false;
             if (imgui_IsItemVisibleEx(0.15f)) {
                 hovered = ImGui::IsItemHovered();
+                pressed = hovered && ImGui::IsMouseDown(ImGuiMouseButton_Left);
+                if (pressed) {
+                    imgui_LockScroll();
+                }
 
                 blobT& blob = m_blobs[id];
                 assert(!blob.active);
@@ -230,7 +234,7 @@ public:
                 if (std::exchange(blob.newly_restarted, false)) {
                     tile.run(rule, speed.step);
                 } else {
-                    const bool pause = speed.pause || (!ctrl && hovered && ImGui::IsMouseDown(ImGuiMouseButton_Left));
+                    const bool pause = speed.pause || (!ctrl && pressed);
                     if (!pause && (speed.interval == 0 || (ImGui::GetFrameCount() % (speed.interval + 1)) == 0)) {
                         tile.run(rule, speed.step);
                     }
@@ -242,18 +246,25 @@ public:
                 draw.AddImage(texture, min + border, max - border);
                 // TODO: should be able to configure size & scale / toggle off the zoom window.
                 if (hovered && ImGui::IsMousePosValid() && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
-                    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0, 0});
+                    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {1, 1}); // {0, 0} will overlap.
                     if (ImGui::BeginTooltip()) {
-                        constexpr float scale = 3;
+                        static int scale = 3;
+                        if (pressed) {
+                            const float wheel = ImGui::GetIO().MouseWheel;
+                            if (wheel != 0) {
+                                scale = std::clamp(wheel < 0 /*down*/ ? scale - 1 : scale + 1, 2, 4);
+                            }
+                        }
+
+                        constexpr ImVec2 planned = {16 * 12, 12 * 12}; // Multiple of 2,3,4.
                         const ImVec2 total = texture_size();
-                        const ImVec2 show = imgui_Min({4 * 18, 3 * 18}, total);
-                        const ImVec2 pos = imgui_Max({0, 0}, imgui_Floor(ImGui::GetMousePos() - min - show / 2));
-                        // ImGui::Image(texture, show * scale, pos / total, (pos + show) / total);
-                        ImGui::Dummy(show * scale);
+                        const ImVec2 area = imgui_Min(planned / scale, total);
+                        const ImVec2 pos = imgui_Max({0, 0}, imgui_Floor(ImGui::GetMousePos() - min - area / 2));
+                        ImGui::Dummy(area * scale);
                         if (ImGui::IsItemVisible()) {
                             ImGui::GetWindowDrawList()->AddImage(texture, ImGui::GetItemRectMin(),
                                                                  ImGui::GetItemRectMax(), pos / total,
-                                                                 (pos + show) / total);
+                                                                 (pos + area) / total);
                             // No need for border (will be rendered by the window).
                         }
                         ImGui::EndTooltip();
@@ -269,7 +280,7 @@ public:
 
             const bool can_select = to_rule;
             bool select = false, copy = false;
-            if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+            if (hovered && !pressed && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
                 m_popup.open(id);
             }
             if (m_popup.begin_popup(id)) {
