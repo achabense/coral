@@ -10,8 +10,17 @@ bool imgui_IsItemVisibleEx(float least) {
 }
 
 bool imgui_BeginPopupEx(ImGuiID id, ImGuiWindowFlags flags) {
-    return ImGui::BeginPopupEx(id, flags | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar |
-                                       ImGuiWindowFlags_NoSavedSettings);
+    if (ImGui::BeginPopupEx(id, flags | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar |
+                                    ImGuiWindowFlags_NoSavedSettings)) {
+        // TODO: risky workaround to prevent left-click from focusing the background -> affecting visual (as hover is blocked).
+        // Related: `UpdateMouseMovingWindowEndFrame()`.
+        if (ImGui::IsWindowFocused() /*topmost popup*/ && !ImGui::IsWindowHovered() && !ImGui::IsAnyItemActive() &&
+            !ImGui::IsAnyItemHovered()) {
+            ImGui::GetIO().MouseClicked[1] |= std::exchange(ImGui::GetIO().MouseClicked[0], false);
+        }
+        return true;
+    }
+    return false;
 }
 
 void imgui_LockScroll() { ImGui::SetKeyOwner(ImGuiKey_MouseWheelY, ImGuiKeyOwner_Any, ImGuiInputFlags_LockThisFrame); }

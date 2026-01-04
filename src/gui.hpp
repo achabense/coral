@@ -100,12 +100,18 @@ public:
 };
 
 // Note: SDL is unable to create texture with height = 9 * codeT::states (19683 when cellT::states = 3).
+template <bool add_rect>
 inline void render_code(const codeT code, const int scale, const ImVec2 min, ImDrawList& draw) {
     const auto env = iso3::decode(code);
     for (int y = 0, i = 0; y < 3; ++y) {
         for (int x = 0; x < 3; ++x) {
-            draw.AddRectFilled(min + ImVec2(x, y) * scale, min + ImVec2(x + 1, y + 1) * scale,
-                               color_for(env.data[i++]));
+            const ImVec2 p_min = min + ImVec2(x, y) * scale;
+            const ImVec2 p_max = min + ImVec2(x + 1, y + 1) * scale;
+            draw.AddRectFilled(p_min, p_max, color_for(env.data[i++]));
+            if constexpr (add_rect) {
+                // TODO: make thickness of inner border -> 1?
+                draw.AddRect(p_min, p_max, IM_COL32(180, 180, 180, 255));
+            }
         }
     }
 }
@@ -116,7 +122,7 @@ inline void code_image(const codeT code, const int scale = 7) {
     if (ImGui::IsItemVisible()) {
         const ImVec2 min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
         ImDrawList& draw = *ImGui::GetWindowDrawList();
-        render_code(code, scale, min + border, draw);
+        render_code<false>(code, scale, min + border, draw);
         draw.AddRect(min, max, IM_COL32(180, 180, 180, 255));
     }
 }
@@ -208,7 +214,11 @@ public:
     void image(const ruleT& rule, const speedT& speed, const int id, shared_popup& m_popup, extra_message& m_message,
                std::optional<ruleT>* to_rule = nullptr) {
         constexpr ImVec2 border = {1, 1};
-        ImGui::Dummy(texture_size() + border * 2); // TODO: use InvisibleButton() instead?
+        // TODO: is it possible to distinguish items with no id from the background (e.g. IsBgHovered())?
+        // ImGui::Dummy(texture_size() + border * 2);
+        ImGui::PushID(id);
+        ImGui::InvisibleButton(":|", texture_size() + border * 2);
+        ImGui::PopID();
         if (ImGui::IsItemVisible()) {
             const ImVec2 min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
             ImDrawList& draw = *ImGui::GetWindowDrawList();
@@ -216,7 +226,7 @@ public:
             bool hovered = false, pressed = false;
             if (imgui_IsItemVisibleEx(0.15f)) {
                 hovered = ImGui::IsItemHovered();
-                pressed = hovered && ImGui::IsMouseDown(ImGuiMouseButton_Left);
+                pressed = hovered && ImGui::IsItemActive();
                 if (pressed) {
                     imgui_LockScroll(); // Ctrl also disables scrolling.
                 }
@@ -244,7 +254,6 @@ public:
                 // `tile` must not be cleared / resized after this (in this frame).
                 const ImTextureID texture = tile.texture();
                 draw.AddImage(texture, min + border, max - border);
-                // TODO: should be able to configure size & scale / toggle off the zoom window.
                 if (hovered && ImGui::IsMousePosValid() && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
                     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {1, 1}); // {0, 0} will overlap.
                     if (ImGui::BeginTooltip()) {
@@ -280,6 +289,7 @@ public:
 
             const bool can_select = to_rule;
             bool select = false, copy = false;
+            // !!TODO: some operations should also require `!ImGui::IsAnyItemActive()`.
             if (hovered && !pressed && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
                 m_popup.open(id);
             }
@@ -332,9 +342,6 @@ public:
     // TODO: should not be public.
     preview_group::speedT speed{.pause = false, .step = 1, .interval = 0};
 
-    // TODO: support find-group & to-random-group & to-top.
-    // std::optional<codeT> to_group;
-
     std::optional<ruleT> to_rule = std::nullopt; // TODO: use ruleT + bool instead?
     bool reset = false;
     bool restart = false;
@@ -365,6 +372,18 @@ public:
         const bool child = ImGui::BeginChild("Groups");
         ImGui::PopStyleVar();
         if (child) {
+            // std::optional<codeT> to_locate = std::nullopt;
+            int to_locate = -1;
+            if (ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered() && !ImGui::IsAnyItemActive() &&
+                ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+                m_popup.open(-100);
+            }
+            if (m_popup.begin_popup(-100)) {
+                // imgui_LockScroll(); // No need to disable scrolling.
+                select_group(to_locate, m_rand);
+                m_popup.end_popup();
+            }
+
             const int group_spacing = item_spacing * 3;
             const int group_width = code_image_width() + item_spacing + m_preview.image_size().x;
             const int avail_width = ImGui::GetContentRegionAvail().x;
@@ -380,7 +399,11 @@ public:
                 ++group_index;
 
                 // !!TODO: unfinished. Should display the current value & value-to.
-                code_image(group[0]);
+                const codeT group_0 = group[0];
+                code_image(group_0);
+                if (to_locate == group_0) {
+                    ImGui::SetScrollHereY(0);
+                }
                 if (ImGui::BeginItemTooltip()) {
                     for (bool first = true; const codeT c : group) {
                         if (!std::exchange(first, false)) {
@@ -415,8 +438,8 @@ private:
         }
         if (std::exchange(randomize, false)) {
             // !!TODO: support different modes.
-            iso3::rand_rule(to_rule.emplace(), m_rand, {64, 4, 1});
-            // iso3::randomize(to_rule.emplace(m_rule.get()), m_rand, 1.0 / 32);
+            iso3::randomize(to_rule.emplace(m_rule.get()), m_rand, 1.0 / 32);
+            // iso3::rand_rule(to_rule.emplace(), m_rand, {64, 4, 1});
         }
         if (std::exchange(paste, false)) {
             if (!iso3::from_string(to_rule.emplace(), ImGui::GetClipboardText())) {
@@ -442,6 +465,43 @@ private:
         if (std::exchange(restart, false)) {
             m_preview.restart_all();
         }
+    }
+
+    static void select_group(int& to_locate, std::mt19937& m_rand) {
+        static iso3::envT cells{}; // TODO: working but technically should belong to object.
+        const int scale = ImGui::GetFrameHeight();
+        ImGui::InvisibleButton("Cells", ImVec2(scale * 3, scale * 3),
+                               ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
+        if (ImGui::IsItemVisible()) {
+            const ImVec2 min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
+            render_code<true>(iso3::encode(cells), scale, min, *ImGui::GetWindowDrawList());
+            if (ImGui::IsItemActive() && ImGui::IsItemHovered() && ImGui::IsMousePosValid()) {
+                const ImVec2 pos = imgui_Floor((ImGui::GetMousePos() - min) / scale);
+                if (const int i = pos.y * 3 + pos.x; 0 <= i && i < 9) {
+                    cellT& cell = cells.data[i];
+                    // Left-click -> change value; right-click -> use clicked value.
+                    static cellT v = {};
+                    if (ImGui::IsItemActivated()) {
+                        v = ImGui::IsMouseClicked(ImGuiMouseButton_Left) ? iso3::increase(cell) : /*rclick*/ cell;
+                    }
+                    cell = v;
+                }
+            }
+        }
+        ImGui::SameLine();
+        ImGui::BeginGroup();
+        if (ImGui::Button("Locate")) {
+            const codeT group_0 = isotropic::get().group_for(iso3::encode(cells))[0];
+            cells = iso3::decode(group_0);
+            to_locate = group_0;
+        }
+        if (ImGui::Button("Random")) {
+            const auto& groups = isotropic::get().groups();
+            const codeT group_0 = groups[m_rand() % groups.size()][0];
+            cells = iso3::decode(group_0);
+            to_locate = group_0;
+        }
+        ImGui::EndGroup();
     }
 };
 
