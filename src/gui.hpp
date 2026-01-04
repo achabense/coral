@@ -218,7 +218,7 @@ public:
                 hovered = ImGui::IsItemHovered();
                 pressed = hovered && ImGui::IsMouseDown(ImGuiMouseButton_Left);
                 if (pressed) {
-                    imgui_LockScroll();
+                    imgui_LockScroll(); // Ctrl also disables scrolling.
                 }
 
                 blobT& blob = m_blobs[id];
@@ -249,7 +249,7 @@ public:
                     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {1, 1}); // {0, 0} will overlap.
                     if (ImGui::BeginTooltip()) {
                         static int scale = 3;
-                        if (pressed) {
+                        if (ctrl || pressed) {
                             const float wheel = ImGui::GetIO().MouseWheel;
                             if (wheel != 0) {
                                 scale = std::clamp(wheel < 0 /*down*/ ? scale - 1 : scale + 1, 2, 4);
@@ -284,6 +284,7 @@ public:
                 m_popup.open(id);
             }
             if (m_popup.begin_popup(id)) {
+                imgui_LockScroll();
                 select |= can_select && ImGui::Selectable("Select");
                 copy |= ImGui::Selectable("Copy");
                 m_popup.end_popup();
@@ -360,10 +361,6 @@ public:
 
         ImGui::Separator();
 
-        // TODO: document scrolling behavior & support scrolling with up/down.
-        // (Drag from scrollbar or press ctrl to scroll to position; otherwise will scroll by page size.)
-        // Related: https://github.com/ocornut/imgui/issues/8002
-        ImGui::GetIO().ConfigScrollbarScrollByPage = !ImGui::GetIO().KeyCtrl;
         ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, 18); // To make the scrollbar easier to click.
         const bool child = ImGui::BeginChild("Groups");
         ImGui::PopStyleVar();
@@ -449,6 +446,11 @@ private:
 };
 
 inline void frame_main(main_data& data) {
+    // TODO: document scrolling behavior & support scrolling with up/down.
+    // (Drag from scrollbar or press ctrl to scroll to position; otherwise will scroll by page size.)
+    // Related: https://github.com/ocornut/imgui/issues/8002
+    ImGui::GetIO().ConfigScrollbarScrollByPage = !ImGui::GetIO().KeyCtrl;
+
     ImGui::SetNextWindowPos(ImGui::GetMainViewport()->WorkPos);
     ImGui::SetNextWindowSize(ImGui::GetMainViewport()->WorkSize);
     ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(24, 24, 24, 255));

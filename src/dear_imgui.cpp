@@ -14,7 +14,7 @@ bool imgui_BeginPopupEx(ImGuiID id, ImGuiWindowFlags flags) {
                                        ImGuiWindowFlags_NoSavedSettings);
 }
 
-void imgui_LockScroll() { ImGui::SetKeyOwner(ImGuiKey_MouseWheelY, GImGui->CurrentWindow->MoveId); }
+void imgui_LockScroll() { ImGui::SetKeyOwner(ImGuiKey_MouseWheelY, ImGuiKeyOwner_Any, ImGuiInputFlags_LockThisFrame); }
 
 bool imgui_DoubleClickButton(const char* label, ImVec2 size) {
     for (const auto col : {ImGuiCol_Button, ImGuiCol_ButtonActive, ImGuiCol_ButtonHovered}) {

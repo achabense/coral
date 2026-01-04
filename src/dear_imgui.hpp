@@ -67,12 +67,9 @@ public:
     bool opened(int id) const { return owner_id == id; }
 
     // Can be a single function to take callbacks, but it's likely more efficient to split to two functions.
-    bool begin_popup(int id, bool lock_scroll = true) {
+    bool begin_popup(int id) {
         if (owner_id == id && imgui_BeginPopupEx(popup_id, ImGuiWindowFlags_NoNav)) {
             activated = true;
-            if (lock_scroll) { // && !ImGui::IsWindowHovered(...) (currently not needed)
-                imgui_LockScroll();
-            }
             return true;
         }
         return false;
