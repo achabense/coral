@@ -9,6 +9,12 @@ bool imgui_IsItemVisibleEx(float least) {
     return rect.GetArea() >= least_area;
 }
 
+void imgui_HighlightItem(ImGuiID id) {
+    if (id) {
+        ImGui::NavHighlightActivated(id);
+    }
+}
+
 bool imgui_BeginPopupEx(ImGuiID id, ImGuiWindowFlags flags) {
     if (ImGui::BeginPopupEx(id, flags | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar |
                                     ImGuiWindowFlags_NoSavedSettings)) {
@@ -34,7 +40,7 @@ bool imgui_DoubleClickButton(const char* label, ImVec2 size) {
     return ret;
 }
 
-void imgui_SliderIntEx(float slider_width, const char* label, int& val, int min /*[*/, int max /*]*/) {
+void imgui_SliderIntEx(float slider_width, const char* label, int& val, int min /*[*/, int max /*]*/, bool repeat) {
     assert(min <= max);
     val = std::clamp(val, min, max);
     const float inner_spacing = ImGui::GetStyle().ItemInnerSpacing.x;
@@ -43,6 +49,7 @@ void imgui_SliderIntEx(float slider_width, const char* label, int& val, int min 
     ImGui::PushID(label, label_end);
     ImGui::SetNextItemWidth(slider_width);
     ImGui::SliderInt("##Slider", &val, min, max, "%d", ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput);
+    ImGui::PushItemFlag(ImGuiItemFlags_ButtonRepeat, repeat);
     ImGui::SameLine(0, inner_spacing);
     if (ImGui::Button("-", {frame_height, frame_height})) {
         --val;
@@ -51,6 +58,7 @@ void imgui_SliderIntEx(float slider_width, const char* label, int& val, int min 
     if (ImGui::Button("+", {frame_height, frame_height})) {
         ++val;
     }
+    ImGui::PopItemFlag();
     ImGui::SameLine(0, inner_spacing);
     ImGui::TextUnformatted(label, ImGui::FindRenderedTextEnd(label, label_end));
     val = std::clamp(val, min, max);

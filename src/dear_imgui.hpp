@@ -14,6 +14,8 @@
 // At least `*least` area is visible.
 extern bool imgui_IsItemVisibleEx(float least);
 
+extern void imgui_HighlightItem(ImGuiID id);
+
 // Necessary for `shared_popup` below (to be shared across windows).
 // Unfortunately not exposed in "imgui.h". Related: https://github.com/ocornut/imgui/pull/8995
 extern bool imgui_BeginPopupEx(ImGuiID id, ImGuiWindowFlags flags = 0);
@@ -23,7 +25,8 @@ extern void imgui_LockScroll();
 
 extern bool imgui_DoubleClickButton(const char* label, ImVec2 size = {});
 
-extern void imgui_SliderIntEx(float slider_width, const char* label, int& val, int min /*[*/, int max /*]*/);
+extern void imgui_SliderIntEx(float slider_width, const char* label, int& val, int min /*[*/, int max /*]*/,
+                              bool repeat);
 
 // Those defined in "imgui_internal.h" cannot be declared for use here (as they are inline functions).
 inline ImVec2 imgui_Floor(ImVec2 a) { return {std::floor(a.x), std::floor(a.y)}; }

@@ -168,6 +168,15 @@ public:
     }
 };
 
+// It's extremely hard to design a generalized shortcut function (e.g. whether to highlight/filter/test disabled/hover/focus)...
+enum class ctrl_mode { ctrl, no_ctrl };
+enum class repeat_mode { repeat, no_repeat, down };
+inline bool test_key(ctrl_mode ctrl, ImGuiKey key, repeat_mode repeat) {
+    return ((ctrl == ctrl_mode::ctrl) == ImGui::GetIO().KeyCtrl) &&
+           (repeat == repeat_mode::down ? ImGui::IsKeyDown(key)
+                                        : ImGui::IsKeyPressed(key, repeat == repeat_mode::repeat));
+}
+
 class preview_group {
     // TODO: use vector if possible. (Can guarantee speed by requiring increasing id.)
     struct blobT {
@@ -208,9 +217,20 @@ public:
         bool pause = false;
         int step = 1;
         int interval = 0; // Frame based. TODO: -> time based?
+
+        // Using a multiple of lcm(2,3) to prevent trivial strobing. (For 3-state rules, both 2 and 3 can be strobing period.)
+        static constexpr int max_step = 12;
+        bool tick() const { return interval == 0 || (ImGui::GetFrameCount() % (interval + 1)) == 0; }
     };
 
     ImVec2 image_size() const { return texture_size() + ImVec2{2, 2} /*border*/; }
+
+    // TODO: uncertain about the design (condition & op).
+    // ctrl + left-click -> select
+    // ctrl + c -> copy
+    // ctrl/press + scroll -> change zoom level
+    // right-click -> op menu (select/copy)
+    // no-ctrl + s/d/f -> extra step
     void image(const ruleT& rule, const speedT& speed, const int id, shared_popup& m_popup, extra_message& m_message,
                std::optional<ruleT>* to_rule = nullptr) {
         constexpr ImVec2 border = {1, 1};
@@ -245,8 +265,14 @@ public:
                     tile.run(rule, speed.step);
                 } else {
                     const bool pause = speed.pause || (!ctrl && pressed);
-                    if (!pause && (speed.interval == 0 || (ImGui::GetFrameCount() % (speed.interval + 1)) == 0)) {
-                        tile.run(rule, speed.step);
+                    bool s = false, d = false, f = false;
+                    if (hovered && !ctrl) {
+                        s = pause && test_key(ctrl_mode::no_ctrl, ImGuiKey_S, repeat_mode::repeat);
+                        d = !s && test_key(ctrl_mode::no_ctrl, ImGuiKey_D, repeat_mode::repeat);
+                        f = !s && !d && test_key(ctrl_mode::no_ctrl, ImGuiKey_F, repeat_mode::down);
+                    }
+                    if (s || d || f || (!pause && speed.tick())) {
+                        tile.run(rule, s ? speed.step : d ? 1 : f ? speed.max_step : speed.step);
                     }
                 }
 
@@ -302,9 +328,9 @@ public:
             if (hovered && ctrl) {
                 if (can_select) {
                     ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-                    select |= ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+                    select |= ImGui::IsItemActivated(); // Clicked.
                 }
-                copy |= ImGui::Shortcut(ImGuiKey_C | ImGuiMod_Ctrl, ImGuiInputFlags_RouteAlways);
+                copy |= test_key(ctrl_mode::ctrl, ImGuiKey_C, repeat_mode::no_repeat);
             }
             if (select) {
                 *to_rule = rule; // For simpler sync logic.
@@ -389,6 +415,7 @@ public:
             const int avail_width = ImGui::GetContentRegionAvail().x;
             const int per_line = std::max((avail_width + group_spacing) / (group_width + group_spacing), 1);
 
+            // TODO: -> separate pages (instead of a single scrollable page)?
             int group_index = 0;
             for (const auto& group : isotropic::get().groups()) {
                 if (group_index % per_line != 0) {
@@ -519,29 +546,72 @@ inline void frame_main(main_data& data) {
                                          ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
     ImGui::PopStyleColor();
     if (window) {
+        // TODO: uncertain about the design (condition & op).
+        const bool enable_shortcut =
+            !ImGui::IsAnyItemActive() &&
+            ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows | ImGuiFocusedFlags_NoPopupHierarchy);
+        const auto shortcut = [enable_shortcut](ctrl_mode ctrl, ImGuiKey key, repeat_mode repeat,
+                                                ImGuiID highlight = ImGui::GetItemID()) {
+            if (enable_shortcut && test_key(ctrl, key, repeat)) {
+                if (highlight) {
+                    imgui_HighlightItem(highlight);
+                }
+                return true;
+            }
+            return false;
+        };
+
         data.reset |= imgui_DoubleClickButton("Reset");
         ImGui::SameLine();
         data.randomize |= imgui_DoubleClickButton("Random");
         ImGui::SameLine();
-        data.paste |= imgui_DoubleClickButton("Paste");
+        data.paste |= imgui_DoubleClickButton("Paste") || shortcut(ctrl_mode::ctrl, ImGuiKey_V, repeat_mode::no_repeat);
         ImGui::SameLine();
         ImGui::Text("%d fps", (int)std::round(ImGui::GetIO().Framerate));
         ImGui::SameLine();
         ImGui::BeginDisabled(!data.has_prev());
-        data.to_prev |= ImGui::Button("Undo");
+        data.to_prev |=
+            ImGui::Button("Undo") || (data.has_prev() && shortcut(ctrl_mode::ctrl, ImGuiKey_Z, repeat_mode::no_repeat));
         ImGui::EndDisabled();
         ImGui::SameLine();
         ImGui::BeginDisabled(!data.has_next());
-        data.to_next |= ImGui::Button("Redo");
+        data.to_next |=
+            ImGui::Button("Redo") || (data.has_next() && shortcut(ctrl_mode::ctrl, ImGuiKey_Y, repeat_mode::no_repeat));
         ImGui::EndDisabled();
         ImGui::SameLine();
-        data.restart |= ImGui::Button("Restart");
+        // TODO: support pausing/restarting individual windows.
+        data.restart |= ImGui::Button("Restart") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_R, repeat_mode::no_repeat);
         ImGui::SameLine();
         ImGui::Checkbox("Pause", &data.speed.pause);
+        if (shortcut(ctrl_mode::no_ctrl, ImGuiKey_Space, repeat_mode::no_repeat)) {
+            data.speed.pause = !data.speed.pause;
+        }
+        constexpr int step_min = 1, step_max = decltype(data.speed)::max_step;
+        constexpr int interval_min = 0, interval_max = 20;
         ImGui::SameLine();
-        imgui_SliderIntEx(ImGui::GetFontSize() * 10, "Step", data.speed.step, 1, 10);
+        imgui_SliderIntEx(ImGui::GetFontSize() * 10, "Step", data.speed.step, step_min, step_max, true);
         ImGui::SameLine();
-        imgui_SliderIntEx(ImGui::GetFontSize() * 10, "Interval", data.speed.interval, 0, 10);
+        imgui_SliderIntEx(ImGui::GetFontSize() * 10, "Interval", data.speed.interval, interval_min, interval_max, true);
+        {
+            ImGui::PushID("Step"); // Workaround to highlight the step buttons.
+            if (shortcut(ctrl_mode::no_ctrl, ImGuiKey_1, repeat_mode::repeat, ImGui::GetID("-"))) {
+                --data.speed.step;
+            }
+            if (shortcut(ctrl_mode::no_ctrl, ImGuiKey_2, repeat_mode::repeat, ImGui::GetID("+"))) {
+                ++data.speed.step;
+            }
+            ImGui::PopID();
+            ImGui::PushID("Interval");
+            if (shortcut(ctrl_mode::no_ctrl, ImGuiKey_3, repeat_mode::repeat, ImGui::GetID("-"))) {
+                --data.speed.interval;
+            }
+            if (shortcut(ctrl_mode::no_ctrl, ImGuiKey_4, repeat_mode::repeat, ImGui::GetID("+"))) {
+                ++data.speed.interval;
+            }
+            ImGui::PopID();
+            data.speed.step = std::clamp(data.speed.step, step_min, step_max);
+            data.speed.interval = std::clamp(data.speed.interval, interval_min, interval_max);
+        }
 
         ImGui::Separator();
         data.display();
