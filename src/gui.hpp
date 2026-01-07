@@ -178,7 +178,6 @@ inline bool test_key(ctrl_mode ctrl, ImGuiKey key, repeat_mode repeat) {
 }
 
 class preview_group {
-    // TODO: use vector if possible. (Can guarantee speed by requiring increasing id.)
     struct blobT {
         tile_with_texture tile{};
         bool newly_restarted = false;
@@ -281,30 +280,8 @@ public:
                 const ImTextureID texture = tile.texture();
                 draw.AddImage(texture, min + border, max - border);
                 if (hovered && ImGui::IsMousePosValid() && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
-                    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {1, 1}); // {0, 0} will overlap.
-                    if (ImGui::BeginTooltip()) {
-                        static int scale = 3;
-                        if (ctrl || pressed) {
-                            const float wheel = ImGui::GetIO().MouseWheel;
-                            if (wheel != 0) {
-                                scale = std::clamp(wheel < 0 /*down*/ ? scale - 1 : scale + 1, 2, 4);
-                            }
-                        }
-
-                        constexpr ImVec2 planned = {16 * 12, 12 * 12}; // Multiple of 2,3,4.
-                        const ImVec2 total = texture_size();
-                        const ImVec2 area = imgui_Min(planned / scale, total);
-                        const ImVec2 pos = imgui_Max({0, 0}, imgui_Floor(ImGui::GetMousePos() - min - area / 2));
-                        ImGui::Dummy(area * scale);
-                        if (ImGui::IsItemVisible()) {
-                            ImGui::GetWindowDrawList()->AddImage(texture, ImGui::GetItemRectMin(),
-                                                                 ImGui::GetItemRectMax(), pos / total,
-                                                                 (pos + area) / total);
-                            // No need for border (will be rendered by the window).
-                        }
-                        ImGui::EndTooltip();
-                    }
-                    ImGui::PopStyleVar();
+                    display_in_tooltip(texture, texture_size(), ImGui::GetMousePos() - min - border,
+                                       ctrl || pressed /*-> scroll to change zoom level*/);
                 }
             } else {
                 // draw.AddRectFilled(min, max, IM_COL32(32, 32, 32, 255));
@@ -333,7 +310,7 @@ public:
                 copy |= test_key(ctrl_mode::ctrl, ImGuiKey_C, repeat_mode::no_repeat);
             }
             if (select) {
-                *to_rule = rule; // For simpler sync logic.
+                *to_rule = rule;
                 m_message.set("Selected.");
             }
             if (copy) {
@@ -341,6 +318,33 @@ public:
                 m_message.set("Copied.");
             }
         }
+    }
+
+private:
+    // TODO: also extract op logic.
+    static void display_in_tooltip(ImTextureID texture, ImVec2 texture_size, ImVec2 center, bool can_scale) {
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {1, 1}); // {0, 0} will overlap.
+        if (ImGui::BeginTooltip()) {
+            static int scale = 3;
+            if (can_scale) {
+                const float wheel = ImGui::GetIO().MouseWheel;
+                if (wheel != 0) {
+                    scale = std::clamp(wheel < 0 /*down*/ ? scale - 1 : scale + 1, 2, 4);
+                }
+            }
+
+            // 12 ~ lcm(2,3,4).
+            const ImVec2 size = imgui_Min(ImVec2(16 * 12, 12 * 12) / scale, texture_size);
+            const ImVec2 min = imgui_Max({0, 0}, imgui_Floor(center - size / 2));
+            ImGui::Dummy(size * scale);
+            if (ImGui::IsItemVisible()) {
+                ImGui::GetWindowDrawList()->AddImage(texture, ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
+                                                     min / texture_size, (min + size) / texture_size);
+                // No need for border (will be rendered by the window).
+            }
+            ImGui::EndTooltip();
+        }
+        ImGui::PopStyleVar();
     }
 };
 
@@ -494,6 +498,7 @@ private:
         }
     }
 
+    // TODO: should also support record.
     static void select_group(int& to_locate, std::mt19937& m_rand) {
         static iso3::envT cells{}; // TODO: working but technically should belong to object.
         const int scale = ImGui::GetFrameHeight();

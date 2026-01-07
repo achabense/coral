@@ -206,7 +206,7 @@ namespace iso3 {
     // Related: https://github.com/microsoft/STL/issues/5198
     using randT = std::mt19937;
 
-    using freqT = std::array<int, 3>; // [i] for cellT(i).
+    using freqT = std::array<int, cellT::states>; // [i] for cellT(i).
 
     inline auto rand_cell_from(randT& rand) {
         return [&rand] { return cellT(rand() % cellT::states); };
@@ -214,16 +214,19 @@ namespace iso3 {
 
     inline auto rand_cell_from(randT& rand, const freqT freq) {
         // Also, the sum should not be too large.
-        assert(freq[0] >= 0 && freq[1] >= 0 && freq[2] >= 0 && (freq[0] + freq[1] + freq[2] > 0));
-        return [&rand, c0 = freq[0], c1 = freq[0] + freq[1], c2 = freq[0] + freq[1] + freq[2]] {
-            if constexpr (cellT::states == 2) {
+        if constexpr (cellT::states == 2) {
+            assert(freq[0] >= 0 && freq[1] >= 0 && (freq[0] + freq[1] > 0));
+            return [&rand, c0 = freq[0], c1 = freq[0] + freq[1]] {
                 const int i = rand() % c1;
                 return cellT(i < c0 ? 0 : 1);
-            } else {
+            };
+        } else {
+            assert(freq[0] >= 0 && freq[1] >= 0 && freq[2] >= 0 && (freq[0] + freq[1] + freq[2] > 0));
+            return [&rand, c0 = freq[0], c1 = freq[0] + freq[1], c2 = freq[0] + freq[1] + freq[2]] {
                 const int i = rand() % c2;
                 return cellT(i < c0 ? 0 : i < c1 ? 1 : 2);
-            }
-        };
+            };
+        }
     }
 
     inline auto rand_p_from(randT& rand, const double p) {
