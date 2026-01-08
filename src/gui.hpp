@@ -238,90 +238,90 @@ public:
         ImGui::PushID(id);
         ImGui::InvisibleButton(":|", texture_size() + border * 2);
         ImGui::PopID();
-        if (ImGui::IsItemVisible()) {
-            const ImVec2 min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
-            ImDrawList& draw = *ImGui::GetWindowDrawList();
-            const bool ctrl = ImGui::GetIO().KeyCtrl;
-            bool hovered = false, pressed = false;
-            if (imgui_IsItemVisibleEx(0.15f)) {
-                hovered = ImGui::IsItemHovered();
-                pressed = hovered && ImGui::IsItemActive();
-                if (pressed) {
-                    imgui_LockScroll(); // Ctrl also disables scrolling.
-                }
+        if (!ImGui::IsItemVisible()) {
+            return;
+        }
+        const ImVec2 min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
+        ImDrawList& draw = *ImGui::GetWindowDrawList();
+        if (!imgui_IsItemVisibleEx(0.15f)) {
+            draw.AddRect(min, max, ImGui::GetColorU32(ImGuiCol_Border));
+            return;
+        }
 
-                blobT& blob = m_blobs[id];
-                assert(!blob.active);
-                blob.active = true;
-                tile_with_texture& tile = blob.tile;
-                if (tile.empty()) {
-                    tile.assign(m_init);
-                    blob.newly_restarted = true;
-                }
-                // TODO: whether to run before displaying?
-                // TODO: whether to always skip the init state?
-                if (std::exchange(blob.newly_restarted, false)) {
-                    tile.run(rule, speed.step);
-                } else {
-                    const bool pause = speed.pause || (!ctrl && pressed);
-                    bool s = false, d = false, f = false;
-                    if (hovered && !ctrl) {
-                        s = pause && test_key(ctrl_mode::no_ctrl, ImGuiKey_S, repeat_mode::repeat);
-                        d = !s && test_key(ctrl_mode::no_ctrl, ImGuiKey_D, repeat_mode::repeat);
-                        f = !s && !d && test_key(ctrl_mode::no_ctrl, ImGuiKey_F, repeat_mode::down);
-                    }
-                    if (s || d || f || (!pause && speed.tick())) {
-                        tile.run(rule, s ? speed.step : d ? 1 : f ? speed.max_step : speed.step);
-                    }
-                }
+        const bool ctrl = ImGui::GetIO().KeyCtrl;
+        const bool hovered = ImGui::IsItemHovered();
+        const bool pressed = hovered && ImGui::IsItemActive();
+        const char op = (hovered && (pressed || !ImGui::IsAnyItemActive())) ? test_op() : '\0';
+        if (pressed) {
+            imgui_LockScroll(); // Ctrl also disables scrolling.
+        }
 
-                // TODO: the current ownership works, but is still risky...
-                // `tile` must not be cleared / resized after this (in this frame).
-                const ImTextureID texture = tile.texture();
-                draw.AddImage(texture, min + border, max - border);
-                if (hovered && ImGui::IsMousePosValid() && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
-                    display_in_tooltip(texture, texture_size(), ImGui::GetMousePos() - min - border,
-                                       ctrl || pressed /*-> scroll to change zoom level*/);
-                }
-            } else {
-                // draw.AddRectFilled(min, max, IM_COL32(32, 32, 32, 255));
+        blobT& blob = m_blobs[id];
+        assert(!blob.active);
+        blob.active = true;
+        tile_with_texture& tile = blob.tile;
+        if (tile.empty()) {
+            tile.assign(m_init);
+            blob.newly_restarted = true;
+        }
+        // TODO: whether to run before displaying?
+        // TODO: whether to always skip the init state?
+        if (std::exchange(blob.newly_restarted, false)) {
+            tile.run(rule, speed.step);
+        } else if (op && (op == 'S' || op == 'D' || op == 'F')) {
+            tile.run(rule, op == 'S' ? speed.step : op == 'D' ? 1 : /*'F'*/ speed.max_step);
+        } else {
+            const bool pause = speed.pause || (!ctrl && pressed);
+            if (!pause && speed.tick()) {
+                tile.run(rule, speed.step);
             }
-            // TODO: working but need to use a separate id for popup in the future.
-            draw.AddRect(min, max,
-                         hovered || m_popup.opened(id) ? IM_COL32_WHITE : ImGui::GetColorU32(ImGuiCol_Border));
+        }
 
-            const bool can_select = to_rule;
-            bool select = false, copy = false;
-            // !!TODO: some operations should also require `!ImGui::IsAnyItemActive()`.
-            if (hovered && !pressed && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-                m_popup.open(id);
-            }
-            if (m_popup.begin_popup(id)) {
-                imgui_LockScroll();
-                select |= can_select && ImGui::Selectable("Select");
-                copy |= ImGui::Selectable("Copy");
-                m_popup.end_popup();
-            }
-            if (hovered && ctrl) {
-                if (can_select) {
-                    ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-                    select |= ImGui::IsItemActivated(); // Clicked.
-                }
-                copy |= test_key(ctrl_mode::ctrl, ImGuiKey_C, repeat_mode::no_repeat);
-            }
-            if (select) {
-                *to_rule = rule;
-                m_message.set("Selected.");
-            }
-            if (copy) {
-                ImGui::SetClipboardText(iso3::to_string(rule).c_str());
-                m_message.set("Copied.");
-            }
+        // TODO: the current ownership works, but is still risky...
+        // `tile` must not be cleared / resized after this (in this frame).
+        const ImTextureID texture = tile.texture();
+        draw.AddImage(texture, min + border, max - border);
+        if (hovered && ImGui::IsMousePosValid() && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+            display_in_tooltip(texture, texture_size(), ImGui::GetMousePos() - min - border,
+                               ctrl || pressed /*-> scroll to change zoom level*/);
+        }
+        // TODO: working but need to use a separate id for popup in the future.
+        draw.AddRect(min, max, hovered || m_popup.opened(id) ? IM_COL32_WHITE : ImGui::GetColorU32(ImGuiCol_Border));
+
+        const bool can_select = to_rule;
+        bool select = false, copy = op == 'C';
+        if (hovered && !ImGui::IsAnyItemActive() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+            m_popup.open(id);
+        }
+        if (m_popup.begin_popup(id)) {
+            imgui_LockScroll();
+            select |= can_select && ImGui::Selectable("Select");
+            copy |= ImGui::Selectable("Copy");
+            m_popup.end_popup();
+        }
+        if (can_select && hovered && ctrl) {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+            select |= ImGui::IsItemActivated(); // Clicked.
+        }
+        if (select) {
+            *to_rule = rule;
+            m_message.set("Selected.");
+        }
+        if (copy) {
+            ImGui::SetClipboardText(iso3::to_string(rule).c_str());
+            m_message.set("Copied.");
         }
     }
 
 private:
-    // TODO: also extract op logic.
+    static char test_op() {
+        return test_key(ctrl_mode::no_ctrl, ImGuiKey_S, repeat_mode::repeat)   ? 'S'
+               : test_key(ctrl_mode::no_ctrl, ImGuiKey_D, repeat_mode::repeat) ? 'D'
+               : test_key(ctrl_mode::no_ctrl, ImGuiKey_F, repeat_mode::down)   ? 'F'
+               : test_key(ctrl_mode::ctrl, ImGuiKey_C, repeat_mode::no_repeat) ? 'C'
+                                                                               : '\0';
+    }
+
     static void display_in_tooltip(ImTextureID texture, ImVec2 texture_size, ImVec2 center, bool can_scale) {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {1, 1}); // {0, 0} will overlap.
         if (ImGui::BeginTooltip()) {
@@ -398,6 +398,7 @@ public:
 
         ImGui::Separator();
 
+        // Note: should not be set globally, as this also affects sliders...
         ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, 18); // To make the scrollbar easier to click.
         const bool child = ImGui::BeginChild("Groups");
         ImGui::PopStyleVar();
@@ -542,15 +543,13 @@ inline void frame_main(main_data& data) {
     // (Drag from scrollbar or press ctrl to scroll to position; otherwise will scroll by page size.)
     // Related: https://github.com/ocornut/imgui/issues/8002
     ImGui::GetIO().ConfigScrollbarScrollByPage = !ImGui::GetIO().KeyCtrl;
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(24, 24, 24, 255)); // Applies to all windows.
 
     ImGui::SetNextWindowPos(ImGui::GetMainViewport()->WorkPos);
     ImGui::SetNextWindowSize(ImGui::GetMainViewport()->WorkSize);
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(24, 24, 24, 255));
-    const bool window = ImGui::Begin("Main", nullptr,
-                                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoNav |
-                                         ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
-    ImGui::PopStyleColor();
-    if (window) {
+    if (ImGui::Begin("Main", nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoNav |
+                         ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings)) {
         // TODO: uncertain about the design (condition & op).
         const bool enable_shortcut =
             !ImGui::IsAnyItemActive() &&
@@ -622,4 +621,6 @@ inline void frame_main(main_data& data) {
         data.display();
     };
     ImGui::End();
+
+    ImGui::PopStyleColor();
 }
