@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(exp LANGUAGES CXX)
+project(Coral LANGUAGES CXX)
 
 include(FetchContent)
 set(FETCHCONTENT_QUIET FALSE)

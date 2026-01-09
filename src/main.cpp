@@ -78,7 +78,7 @@ int main(int, char**) {
         }
 
         constexpr SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN; // | SDL_WINDOW_HIGH_PIXEL_DENSITY;
-        if (!SDL_CreateWindowAndRenderer("Nullberry", 1280, 720, flags, &window, &renderer)) {
+        if (!SDL_CreateWindowAndRenderer("Coral", 1280, 720, flags, &window, &renderer)) {
             exit_failure();
         }
 
