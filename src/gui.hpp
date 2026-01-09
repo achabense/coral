@@ -110,6 +110,7 @@ inline void render_code(const codeT code, const int scale, const ImVec2 min, ImD
             draw.AddRectFilled(p_min, p_max, color_for(env.data[i++]));
             if constexpr (add_rect) {
                 // TODO: make thickness of inner border -> 1?
+                // TODO: IM_COL32(180, 180, 180, 255) -> ImGuiCol_Border?
                 draw.AddRect(p_min, p_max, IM_COL32(180, 180, 180, 255));
             }
         }
@@ -419,6 +420,15 @@ public:
             const int group_width = code_image_width() + item_spacing + m_preview.image_size().x;
             const int avail_width = ImGui::GetContentRegionAvail().x;
             const int per_line = std::max((avail_width + group_spacing) / (group_width + group_spacing), 1);
+            // TODO: workaround for displaying values; doesn't look very nice & the meaning is not obvious...
+            constexpr int cell_width = 6;
+            const auto render_cell = [&draw = *ImGui::GetWindowDrawList()](const cellT v, const ImVec2 min) {
+                const ImVec2 max = min + ImVec2(cell_width, cell_width);
+                if (ImGui::IsRectVisible(min, max)) {
+                    draw.AddRectFilled(min, max, color_for(v));
+                    draw.AddRect(min, max, IM_COL32(180, 180, 180, 255));
+                }
+            };
 
             // TODO: -> separate pages (instead of a single scrollable page)?
             int group_index = 0;
@@ -430,9 +440,10 @@ public:
                 }
                 ++group_index;
 
-                // !!TODO: unfinished. Should display the current value & value-to.
                 const codeT group_0 = group[0];
                 code_image(group_0);
+                const ImVec2 code_image_max = ImGui::GetItemRectMax();
+                render_cell(rule[group_0], {code_image_max.x - cell_width, code_image_max.y + cell_width});
                 if (to_locate == group_0) {
                     ImGui::SetScrollHereY(0);
                 }
@@ -450,6 +461,13 @@ public:
                 for (int i = 0; i < cellT::states - 1; ++i) {
                     iso3::increase(rule, group);
                     m_preview.image(rule, speed, preview_index++, m_popup, m_message, &to_rule);
+                    if (ImGui::IsItemVisible()) {
+                        const ImVec2 image_min = ImGui::GetItemRectMin();
+                        const ImVec2 image_max = ImGui::GetItemRectMax();
+                        render_cell(rule[group_0],
+                                    {code_image_max.x - cell_width,
+                                     image_min.y + std::floor((image_max.y - image_min.y - cell_width) / 2) - 1});
+                    }
                 }
                 ImGui::EndGroup();
                 iso3::increase(rule, group); // Restored.
