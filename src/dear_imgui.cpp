@@ -2,6 +2,11 @@
 
 #include "dear_imgui.hpp"
 
+// Im[US]XX types are typedefs of raw int types, and it's unclear whether they should mean intXX_t or int_leastXX_t...
+// So the following fails, the program is unlikely to work as expected...
+// Related: https://github.com/ocornut/imgui/issues/8546 and 8740
+static_assert(sizeof(ImU32) == sizeof(uint32_t) && sizeof(ImS32) == sizeof(int32_t));
+
 bool imgui_IsItemVisibleEx(float least) {
     ImRect rect = GImGui->LastItemData.Rect;
     const float least_area = rect.GetArea() * least;
