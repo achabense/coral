@@ -130,41 +130,67 @@ inline void code_image(const codeT code, const int scale = 7) {
 
 inline int code_image_width(const int scale = 7) { return scale * 3 + 2 /*border*/; }
 
-// Ring buffer.
-class rule_with_record {
+template <class T>
+class ring_buffer {
     // There seems no way to enforce std::vector to allocate memory for exactly n objects...
-    static constexpr int m_capacity = 16;
-    std::unique_ptr<ruleT[]> m_rules{new ruleT[m_capacity]{}};
-    int m_size = 1; // Record size. (Initially with a single ruleT{}.)
-    int m_0 = 0;    // Position of [0].
-    int m_pos = 0;  // Position of the current rule (relative to m_0).
-
-    ruleT& at(int pos) { return m_rules[(m_0 + pos) % m_capacity]; }
+    std::unique_ptr<T[]> m_data{};
+    int m_capacity{};
+    int m_0 = 0; // Position of [0].
+    int m_size = 0;
 
 public:
-    rule_with_record() = default;
-    rule_with_record(const rule_with_record&) = delete;
-    rule_with_record& operator=(const rule_with_record&) = delete;
+    // All {}-initialized.
+    explicit ring_buffer(int capacity) : m_data(new T[capacity]{}), m_capacity(capacity) { assert(capacity > 0); }
+    ring_buffer(const ring_buffer&) = delete;
+    ring_buffer& operator=(const ring_buffer&) = delete;
 
-    bool has_next() const { return m_pos < m_size - 1; }
+    T& at(int pos) { return m_data[(m_0 + pos) % m_capacity]; }
+    const T& at(int pos) const { return m_data[(m_0 + pos) % m_capacity]; }
+
+    int capacity() const { return m_capacity; }
+    int size() const { return m_size; }
+    bool empty() const { return m_size == 0; }
+
+    // Not responsible for values (should be assigned by callers).
+    // void clear() { m_size = 0; }
+    void resize(int size) {
+        assert(0 <= size && size <= m_capacity);
+        m_size = std::clamp(size, 0, m_capacity);
+    }
+    T& emplace_back() {
+        if (m_size < m_capacity) {
+            ++m_size;
+        } else if (++m_0 == m_capacity) { // Discard the oldest value.
+            m_0 = 0;
+        }
+        assert(1 <= m_size && m_size <= m_capacity && 0 <= m_0 && m_0 < m_capacity);
+        return at(m_size - 1);
+    }
+};
+
+// Always non-empty. (Initially contains a single {}.)
+template <class T>
+class record_for {
+    ring_buffer<T> m_data;
+    int m_pos = 0; // Current position.
+
+public:
+    explicit record_for(int capacity) : m_data(capacity) { m_data.emplace_back(); }
+    record_for(const record_for&) = delete;
+    record_for& operator=(const record_for&) = delete;
+
+    bool has_next() const { return m_pos < m_data.size() - 1; }
     bool has_prev() const { return m_pos > 0; }
-    void to_next() { m_pos = std::min(m_pos + 1, m_size - 1); }
+    void to_next() { m_pos = std::min(m_pos + 1, m_data.size() - 1); }
     void to_prev() { m_pos = std::max(m_pos - 1, 0); }
 
-    ruleT& get() { return at(m_pos); }
-    void set(const ruleT& rule) {
-        assert(1 <= m_size && m_size <= m_capacity);
-        assert(0 <= m_0 && m_0 < m_capacity);
-        assert(0 <= m_pos && m_pos < m_size);
-        if (at(m_pos) != rule) {
-            m_size = m_pos + 1; // Discard rules after the current rule.
-            if (m_size < m_capacity) {
-                ++m_size;
-            } else if (++m_0 == m_capacity) { // Discard the oldest rule.
-                m_0 = 0;
-            }
-            m_pos = m_size - 1;
-            at(m_pos) = rule;
+    const T& get() { return m_data.at(m_pos); }
+    void set(const T& val) {
+        assert(0 <= m_pos && m_pos < m_data.size());
+        if (m_data.at(m_pos) != val) {
+            m_data.resize(m_pos + 1); // Discard values after the current pos.
+            m_data.emplace_back() = val;
+            m_pos = m_data.size() - 1;
         }
     }
 };
@@ -356,7 +382,7 @@ private:
 class main_data {
     using isotropic = iso3::isotropic;
 
-    rule_with_record m_rule{};
+    record_for<ruleT> m_rule{20};
     preview_group m_preview{};
     std::mt19937 m_rand{uint32_t(std::time(0))};
     shared_popup m_popup{};
@@ -386,11 +412,12 @@ public:
 
     void display() {
         flush();
-        ruleT& rule = m_rule.get(); // TODO: working but risky... (Will be restored finally.)
-
         m_popup.set_popup_id("Options");
         m_popup.begin();
         m_preview.begin();
+        // TODO: slightly wasteful. (Can reuse memory by making `record_for::get()` return non-const ref, but that's risky.)
+        std::unique_ptr<ruleT> temp_rule(new ruleT{m_rule.get()});
+        ruleT& rule = *temp_rule;
 
         const int item_spacing = ImGui::GetStyle().ItemSpacing.x;
         int preview_index = 0;
@@ -475,6 +502,7 @@ public:
         }
         ImGui::EndChild();
 
+        assert(rule == m_rule.get());
         m_preview.end();
         m_popup.end();
         m_message.display();
@@ -517,9 +545,29 @@ private:
         }
     }
 
-    // TODO: should also support record.
     static void select_group(int& to_locate, std::mt19937& m_rand) {
-        static iso3::envT cells{}; // TODO: working but technically should belong to object.
+        // TODO: working but technically should belong to object.
+        static iso3::envT cells{};
+        static record_for<iso3::envT> record{10}; // Only for "Locate" and "Random".
+        {
+            ImGui::BeginDisabled(!record.has_prev());
+            if (ImGui::SmallButton("<<")) {
+                record.to_prev();
+                cells = record.get();
+                to_locate = iso3::encode(cells);
+            }
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::BeginDisabled(!record.has_next());
+            if (ImGui::SmallButton(">>")) {
+                record.to_next();
+                cells = record.get();
+                to_locate = iso3::encode(cells);
+            }
+            ImGui::EndDisabled();
+
+            ImGui::Separator();
+        }
         const int scale = ImGui::GetFrameHeight();
         ImGui::InvisibleButton("Cells", ImVec2(scale * 3, scale * 3),
                                ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
@@ -544,12 +592,14 @@ private:
         if (ImGui::Button("Locate")) {
             const codeT group_0 = isotropic::get().group_for(iso3::encode(cells))[0];
             cells = iso3::decode(group_0);
+            record.set(cells);
             to_locate = group_0;
         }
         if (ImGui::Button("Random")) {
             const auto& groups = isotropic::get().groups();
             const codeT group_0 = groups[m_rand() % groups.size()][0];
             cells = iso3::decode(group_0);
+            record.set(cells);
             to_locate = group_0;
         }
         ImGui::EndGroup();

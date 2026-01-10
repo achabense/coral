@@ -35,6 +35,8 @@ namespace iso3 {
     struct envT {
         cellT data[9] = {}; // {q, w, e, a, s, d, z, x, c}
 
+        friend bool operator==(const envT& a, const envT& b) { return !std::memcmp(a.data, b.data, sizeof(data)); }
+
         envT diag() const {
             const auto& [q, w, e, a, s, d, z, x, c] = data;
             return {q, a, z, w, s, x, e, d, c};
@@ -373,6 +375,15 @@ namespace iso3 {
         const auto extr = _misc_::extract_string(str);
         if (!extr.empty()) {
             _misc_::from_string_unchecked(rule, extr, iso);
+            return true;
+        };
+        return false;
+    }
+
+    inline bool from_string(std::vector<ruleT>& rule, std::string_view& str, const isotropic& iso = isotropic::get()) {
+        const auto extr = _misc_::extract_string(str);
+        if (!extr.empty()) {
+            _misc_::from_string_unchecked(rule.emplace_back(), extr, iso);
             return true;
         };
         return false;
