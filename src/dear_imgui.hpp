@@ -15,6 +15,8 @@
 // At least `*least` area is visible.
 extern bool imgui_IsItemVisibleEx(float least);
 
+extern bool imgui_IsItemDisabled();
+
 extern void imgui_HighlightItem(ImGuiID id);
 
 // Necessary for `shared_popup` below (to be shared across windows).

@@ -9,6 +9,7 @@
 
 using iso3::cellT;
 using iso3::codeT;
+using iso3::randT;
 using iso3::ruleT;
 using iso3::tileT;
 
@@ -195,13 +196,26 @@ public:
     }
 };
 
-// It's extremely hard to design a generalized shortcut function (e.g. whether to highlight/filter/test disabled/hover/focus)...
 enum class ctrl_mode { ctrl, no_ctrl };
 enum class repeat_mode { repeat, no_repeat, down };
 inline bool test_key(ctrl_mode ctrl, ImGuiKey key, repeat_mode repeat) {
     return ((ctrl == ctrl_mode::ctrl) == ImGui::GetIO().KeyCtrl) &&
            (repeat == repeat_mode::down ? ImGui::IsKeyDown(key)
                                         : ImGui::IsKeyPressed(key, repeat == repeat_mode::repeat));
+}
+
+// TODO: improve; -> class?
+inline auto create_shortcut(bool enabled) {
+    return [enabled](ctrl_mode ctrl, ImGuiKey key, repeat_mode repeat, ImGuiID highlight = ImGui::GetItemID()) mutable {
+        if (enabled && test_key(ctrl, key, repeat) && !imgui_IsItemDisabled()) {
+            enabled = false; // Only one key can be triggered.
+            if (highlight) {
+                imgui_HighlightItem(highlight);
+            }
+            return true;
+        }
+        return false;
+    };
 }
 
 class preview_group {
@@ -212,7 +226,7 @@ class preview_group {
     };
 
     std::unordered_map<int /*id*/, blobT> m_blobs{};
-    const tileT m_init{iso3::rand_tile({256, 196}, std::mt19937{0})};
+    const tileT m_init{iso3::rand_tile({256, 196}, randT{0})};
 
     ImVec2 texture_size() const { return ImVec2(m_init.size().x, m_init.size().y); }
 
@@ -231,6 +245,11 @@ public:
         // std::erase_if(map) uses the same term, but it's defined by equivalent behavior (which allows modification).
         // https://eel.is/c++draft/unord.map.erasure
         std::erase_if(m_blobs, [](auto& blob) { return !std::exchange(blob.second.active, false); });
+    }
+    void clear() {
+        if (!m_blobs.empty()) {
+            m_blobs.clear();
+        }
     }
     void restart_all() {
         for (auto& [_, blob] : m_blobs) {
@@ -257,6 +276,7 @@ public:
     // ctrl/press + scroll -> change zoom level
     // right-click -> op menu (select/copy)
     // no-ctrl + s/d/f -> extra step
+    // `id` must be unique per group & imgui's id stack (for unique `GetItemID()`).
     void image(const ruleT& rule, const speedT& speed, const int id, shared_popup& m_popup, extra_message& m_message,
                std::optional<ruleT>* to_rule = nullptr) {
         constexpr ImVec2 border = {1, 1};
@@ -337,8 +357,15 @@ public:
         }
     }
 
+    void dummy() const {
+        ImGui::Dummy(image_size());
+        ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
+                                            ImGui::GetColorU32(ImGuiCol_Border));
+    }
+
 private:
     static char test_op() {
+        assert(!imgui_IsItemDisabled());
         return test_key(ctrl_mode::no_ctrl, ImGuiKey_S, repeat_mode::repeat)   ? 'S'
                : test_key(ctrl_mode::no_ctrl, ImGuiKey_D, repeat_mode::repeat) ? 'D'
                : test_key(ctrl_mode::no_ctrl, ImGuiKey_F, repeat_mode::down)   ? 'F'
@@ -372,6 +399,120 @@ private:
     }
 };
 
+// !!TODO: unable to restart this window. (Each window should have their own pause-state / shortcuts.)
+// TODO: support configurable page size.
+// TODO: support more generating modes.
+// TODO: support fixing target rule (e.g. fix to all-0 rule).
+class rule_generator {
+    static constexpr int page_x = 3, page_y = 2, page_size = page_x * page_y;
+
+    preview_group m_preview{}; // TODO: share from `main_data`?
+    ring_buffer<ruleT> m_rules{page_size * 20};
+    int m_pos = 0; // Position for the first rule in the page.
+
+    enum class rand_mode { p, c };
+    rand_mode m_mode = rand_mode::p;
+    int m_dist = 10; // c ~ dist, p ~ dist / 100
+
+    bool restart = false;
+
+public:
+    rule_generator() = default;
+    rule_generator(const rule_generator&) = delete;
+    rule_generator& operator=(const rule_generator&) = delete;
+
+    void display(bool& open, const ruleT& rel, randT& m_rand, const int starting_id, const preview_group::speedT& speed,
+                 shared_popup& m_popup, extra_message& m_message, std::optional<ruleT>& to_rule) {
+        if (!open) {
+            // TODO: workaround for saving memory (without manual clearing, the textures will remain in memory when the window is collapsed / closed.)
+            // (The main window is assumed to never be hidden, so there's no need to clear() for the random-access group. That's somewhat messy.)
+            m_preview.clear();
+            return;
+        }
+
+        // TODO: using fixed name for convenience (technically should be specified per object).
+        ImGui::SetNextWindowCollapsed(false, ImGuiCond_Appearing);
+        if (ImGui::Begin("Generate", &open,
+                         ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav |
+                             ImGuiWindowFlags_AlwaysAutoResize)) {
+            header(rel, m_rand);
+            ImGui::Separator();
+
+            if (std::exchange(restart, false)) {
+                m_preview.restart_all();
+            }
+            m_preview.begin();
+            for (int i = 0; i < page_size; ++i) {
+                if (i != 0 && (i % page_x) != 0) {
+                    ImGui::SameLine();
+                }
+                if (m_pos + i < m_rules.size()) {
+                    m_preview.image(m_rules.at(m_pos + i), speed, starting_id + i, m_popup, m_message, &to_rule);
+                } else {
+                    m_preview.dummy();
+                }
+            }
+            m_preview.end();
+        } else {
+            m_preview.clear(); // e.g. collapsed.
+        }
+        ImGui::End();
+    }
+
+private:
+    void header(const ruleT& rel, randT& m_rand) {
+        assert(m_rules.empty() ? m_pos == 0 : 0 <= m_pos && m_pos < m_rules.size());
+        auto shortcut =
+            create_shortcut(!ImGui::IsAnyItemActive() && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows |
+                                                                                ImGuiFocusedFlags_NoPopupHierarchy));
+
+        ImGui::BeginDisabled(m_rules.empty());
+        if (imgui_DoubleClickButton("Clear")) {
+            m_rules.resize(0); // Won't actually free up memory.
+            m_pos = 0;
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        ImGui::BeginDisabled(m_pos == 0);
+        if (ImGui::Button("<<") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_LeftArrow, repeat_mode::no_repeat)) {
+            restart = true;
+            m_pos = std::max(0, m_pos - page_size);
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        if (ImGui::Button(">>>") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_RightArrow, repeat_mode::no_repeat)) {
+            restart = true;
+            const int page_end = m_pos + page_size;
+            if (m_rules.empty() || m_rules.size() <= page_end) {
+                const int num = m_rules.size() < page_end ? page_end - m_rules.size() : page_size;
+                for (int i = 0; i < num; ++i) {
+                    // iso3::rand_rule(m_rules.emplace_back(), m_rand, {64, 4, 1});
+                    if (m_mode == rand_mode::c) {
+                        iso3::randomize_c(m_rules.emplace_back() = rel, m_rand, m_dist);
+                    } else {
+                        iso3::randomize_p(m_rules.emplace_back() = rel, m_rand, m_dist / 100.0);
+                    }
+                }
+                assert(m_rules.size() >= page_size);
+                m_pos = m_rules.size() - page_size;
+            } else {
+                m_pos += page_size;
+            }
+        }
+        // !!TODO: should explain in UI...
+        ImGui::SameLine();
+        if (ImGui::RadioButton("P", m_mode == rand_mode::p)) {
+            m_mode = rand_mode::p;
+        }
+        ImGui::SameLine();
+        if (ImGui::RadioButton("C", m_mode == rand_mode::c)) {
+            m_mode = rand_mode::c;
+        }
+        ImGui::SameLine();
+        imgui_SliderIntEx(ImGui::GetFontSize() * 10, "##Dist", m_dist, 0, 100, true);
+    }
+};
+
 // TODO: support loading list of rules.
 // TODO: support setting to game-of-life.
 // TODO: support configurable init state.
@@ -381,7 +522,8 @@ class main_data {
 
     record_for<ruleT> m_rule{20};
     preview_group m_preview{};
-    std::mt19937 m_rand{uint32_t(std::time(0))};
+    rule_generator m_generator{};
+    randT m_rand{uint32_t(std::time(0))}; // TODO: can be static var.
     shared_popup m_popup{};
     extra_message m_message{};
 
@@ -399,8 +541,9 @@ public:
     std::optional<ruleT> to_rule = std::nullopt; // TODO: use ruleT + bool instead?
     bool reset = false;
     bool restart = false;
-    bool randomize = false;
     bool paste = false;
+
+    bool open_generate = false;
 
     bool has_prev() const { return m_rule.has_prev(); }
     bool has_next() const { return m_rule.has_next(); }
@@ -409,12 +552,14 @@ public:
 
     void display() {
         flush();
-        m_popup.set_popup_id("Options");
+        m_popup.set_popup_id("Popup");
         m_popup.begin();
         m_preview.begin();
         // TODO: slightly wasteful. (Can reuse memory by making `record_for::get()` return non-const ref, but that's risky.)
         std::unique_ptr<ruleT> temp_rule(new ruleT{m_rule.get()});
         ruleT& rule = *temp_rule;
+
+        m_generator.display(open_generate, rule, m_rand, 10000, speed, m_popup, m_message, to_rule);
 
         const int item_spacing = ImGui::GetStyle().ItemSpacing.x;
         int preview_index = 0;
@@ -511,11 +656,6 @@ private:
         if (std::exchange(reset, false)) {
             to_rule.emplace();
         }
-        if (std::exchange(randomize, false)) {
-            // !!TODO: support different modes.
-            iso3::randomize(to_rule.emplace(m_rule.get()), m_rand, 1.0 / 32);
-            // iso3::rand_rule(to_rule.emplace(), m_rand, {64, 4, 1});
-        }
         if (std::exchange(paste, false)) {
             if (!iso3::from_string(to_rule.emplace(), ImGui::GetClipboardText())) {
                 to_rule.reset();
@@ -542,7 +682,7 @@ private:
         }
     }
 
-    static void select_group(int& to_locate, std::mt19937& m_rand) {
+    static void select_group(int& to_locate, randT& m_rand) {
         // TODO: working but technically should belong to object.
         static iso3::envT cells{};
         static record_for<iso3::envT> record{10}; // Only for "Locate" and "Random".
@@ -618,36 +758,24 @@ inline void frame_main(main_data& data) {
                      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoNav |
                          ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings)) {
         // TODO: uncertain about the design (condition & op).
-        const bool enable_shortcut =
-            !ImGui::IsAnyItemActive() &&
-            ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows | ImGuiFocusedFlags_NoPopupHierarchy);
-        const auto shortcut = [enable_shortcut](ctrl_mode ctrl, ImGuiKey key, repeat_mode repeat,
-                                                ImGuiID highlight = ImGui::GetItemID()) {
-            if (enable_shortcut && test_key(ctrl, key, repeat)) {
-                if (highlight) {
-                    imgui_HighlightItem(highlight);
-                }
-                return true;
-            }
-            return false;
-        };
+        auto shortcut =
+            create_shortcut(!ImGui::IsAnyItemActive() && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows |
+                                                                                ImGuiFocusedFlags_NoPopupHierarchy));
 
-        data.reset |= imgui_DoubleClickButton("Reset");
+        ImGui::Checkbox("Generate", &data.open_generate);
         ImGui::SameLine();
-        data.randomize |= imgui_DoubleClickButton("Random");
+        data.reset |= imgui_DoubleClickButton("Reset");
         ImGui::SameLine();
         data.paste |= imgui_DoubleClickButton("Paste") || shortcut(ctrl_mode::ctrl, ImGuiKey_V, repeat_mode::no_repeat);
         ImGui::SameLine();
         ImGui::Text("%d fps", (int)std::round(ImGui::GetIO().Framerate));
         ImGui::SameLine();
         ImGui::BeginDisabled(!data.has_prev());
-        data.to_prev |=
-            ImGui::Button("Undo") || (data.has_prev() && shortcut(ctrl_mode::ctrl, ImGuiKey_Z, repeat_mode::no_repeat));
+        data.to_prev |= ImGui::Button("Undo") || shortcut(ctrl_mode::ctrl, ImGuiKey_Z, repeat_mode::no_repeat);
         ImGui::EndDisabled();
         ImGui::SameLine();
         ImGui::BeginDisabled(!data.has_next());
-        data.to_next |=
-            ImGui::Button("Redo") || (data.has_next() && shortcut(ctrl_mode::ctrl, ImGuiKey_Y, repeat_mode::no_repeat));
+        data.to_next |= ImGui::Button("Redo") || shortcut(ctrl_mode::ctrl, ImGuiKey_Y, repeat_mode::no_repeat);
         ImGui::EndDisabled();
         ImGui::SameLine();
         // TODO: support pausing/restarting individual windows.

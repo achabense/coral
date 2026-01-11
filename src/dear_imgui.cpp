@@ -14,6 +14,11 @@ bool imgui_IsItemVisibleEx(float least) {
     return rect.GetArea() >= least_area;
 }
 
+bool imgui_IsItemDisabled() {
+    return (GImGui->LastItemData.ItemFlags & ImGuiItemFlags_Disabled) ||
+           (GImGui->CurrentItemFlags & ImGuiItemFlags_Disabled);
+}
+
 void imgui_HighlightItem(ImGuiID id) {
     if (id) {
         ImGui::NavHighlightActivated(id);

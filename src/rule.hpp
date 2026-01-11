@@ -29,6 +29,7 @@ namespace iso3 {
     }
     using _cellT_::cellT;
 
+    // TODO: this is causing trouble. (states == 2 is only used for early testing but have to be considered in many algos...)
     // 2 for debugging.
     static_assert(cellT::states == 2 || cellT::states == 3);
 
@@ -210,6 +211,15 @@ namespace iso3 {
 
     using freqT = std::array<int, cellT::states>; // [i] for cellT(i).
 
+    inline cellT rand_cell_other_than(const cellT c, randT& rand) {
+        if constexpr (cellT::states == 2) {
+            return cellT(!c);
+        } else {
+            static constexpr cellT values[3][2]{{cellT(1), cellT(2)}, {cellT(0), cellT(2)}, {cellT(0), cellT(1)}};
+            return values[c][rand() & 1];
+        }
+    }
+
     inline auto rand_cell_from(randT& rand) {
         return [&rand] { return cellT(rand() % cellT::states); };
     }
@@ -267,12 +277,24 @@ namespace iso3 {
         }
     }
 
-    inline void randomize(ruleT& rule, randT& rand, const double p, const isotropic& iso = isotropic::get()) {
+    inline void randomize_p(ruleT& rule, randT& rand, const double p, const isotropic& iso = isotropic::get()) {
         const auto rand_cell = rand_cell_from(rand);
         const auto rand_p = rand_p_from(rand, p);
         for (const groupT group : iso.groups()) {
             if (rand_p()) {
                 rule.fill(group, rand_cell());
+            }
+        }
+    }
+
+    // Note: ranges::shuffle doesn't work with vector<bool> (though std::shuffle does).
+    inline void randomize_c(ruleT& rule, randT& rand, const int c, const isotropic& iso = isotropic::get()) {
+        std::vector<char> chosen(isotropic::k, false);
+        std::ranges::fill_n(chosen.data(), std::clamp(c, 0, isotropic::k), true);
+        std::ranges::shuffle(chosen, rand);
+        for (int i = 0; const groupT group : iso.groups()) {
+            if (chosen[i++]) {
+                rule.fill(group, rand_cell_other_than(rule[group[0]], rand));
             }
         }
     }
