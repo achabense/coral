@@ -262,10 +262,7 @@ public:
         constexpr ImVec2 border = {1, 1};
         // TODO: is it possible to distinguish items with no id from the background (e.g. IsBgHovered())?
         // ImGui::Dummy(texture_size() + border * 2);
-        ImGui::PushID(id);
-        ImGui::InvisibleButton(":|", texture_size() + border * 2);
-        ImGui::PopID();
-        if (!ImGui::IsItemVisible()) {
+        if (!imgui_DummyEx(texture_size() + border * 2, ":|", id)) {
             return;
         }
         const ImVec2 min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
@@ -611,7 +608,9 @@ inline void frame_main(main_data& data) {
     // (Drag from scrollbar or press ctrl to scroll to position; otherwise will scroll by page size.)
     // Related: https://github.com/ocornut/imgui/issues/8002
     ImGui::GetIO().ConfigScrollbarScrollByPage = !ImGui::GetIO().KeyCtrl;
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(24, 24, 24, 255)); // Applies to all windows.
+    ImGui::GetStyle().HoverDelayShort = 0.20f; // For `ImGuiHoveredFlags_ForTooltip` (0.15s by default).
+    ImGui::GetStyle().Colors[ImGuiCol_WindowBg] = ImGui::ColorConvertU32ToFloat4(IM_COL32(24, 24, 24, 255));
+    ImGui::GetStyle().Colors[ImGuiCol_PopupBg] = ImGui::ColorConvertU32ToFloat4(IM_COL32(12, 12, 12, 255));
 
     ImGui::SetNextWindowPos(ImGui::GetMainViewport()->WorkPos);
     ImGui::SetNextWindowSize(ImGui::GetMainViewport()->WorkSize);
@@ -689,6 +688,4 @@ inline void frame_main(main_data& data) {
         data.display();
     };
     ImGui::End();
-
-    ImGui::PopStyleColor();
 }

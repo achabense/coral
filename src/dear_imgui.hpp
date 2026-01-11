@@ -24,6 +24,10 @@ extern bool imgui_BeginPopupEx(ImGuiID id, ImGuiWindowFlags flags = 0);
 // Will also disable scrolling in the current window.
 extern void imgui_LockScroll();
 
+// Behaves like `InVisibleButton()` if visible, otherwise `Dummy()`. Returns `IsItemVisible()`.
+// (Unlike `InVisibleButton()`, this will not preserve active id if the item is scrolled outside of visible area.)
+extern bool imgui_DummyEx(ImVec2 size, const char* str_id, int extra_id);
+
 extern bool imgui_DoubleClickButton(const char* label, ImVec2 size = {});
 
 extern void imgui_SliderIntEx(float slider_width, const char* label, int& val, int min /*[*/, int max /*]*/,

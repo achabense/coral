@@ -36,6 +36,19 @@ bool imgui_BeginPopupEx(ImGuiID id, ImGuiWindowFlags flags) {
 
 void imgui_LockScroll() { ImGui::SetKeyOwner(ImGuiKey_MouseWheelY, ImGuiKeyOwner_Any, ImGuiInputFlags_LockThisFrame); }
 
+bool imgui_DummyEx(ImVec2 size, const char* str_id, int extra_id) {
+    const bool visible = ImGui::IsRectVisible(size);
+    if (!visible) {
+        ImGui::Dummy(size);
+    } else {
+        ImGui::PushID(extra_id);
+        ImGui::InvisibleButton(str_id, size);
+        ImGui::PopID();
+    }
+    assert(visible == ImGui::IsItemVisible());
+    return visible;
+}
+
 bool imgui_DoubleClickButton(const char* label, ImVec2 size) {
     for (const auto col : {ImGuiCol_Button, ImGuiCol_ButtonActive, ImGuiCol_ButtonHovered}) {
         ImGui::PushStyleColor(col, ImLerp(ImGui::GetStyleColorVec4(col), ImVec4(1, 0, 0, 1), 0.2f));
