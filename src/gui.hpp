@@ -29,20 +29,19 @@ extern ImTextureID texture_create(const tileT& /*not-empty*/);
 extern void texture_update(ImTextureID /*not-null*/, const tileT& /*same-size*/);
 extern void texture_destroy(ImTextureID /*not-null*/);
 
-class tile_with_texture {
+class tile_with_texture : no_copy {
     tileT m_tile = {};
     ImTextureID m_texture = {};
     bool m_sync = false;
 
 public:
-    tile_with_texture() = default;
-    tile_with_texture(const tile_with_texture&) = delete;
-    tile_with_texture& operator=(const tile_with_texture&) = delete;
     void swap(tile_with_texture& other) noexcept {
         m_tile.swap(other.m_tile);
         std::swap(m_texture, other.m_texture);
         std::swap(m_sync, other.m_sync);
     }
+
+    tile_with_texture() = default;
     tile_with_texture(tile_with_texture&& other) noexcept { swap(other); }
     tile_with_texture& operator=(tile_with_texture&& other) noexcept {
         swap(other);
@@ -132,7 +131,7 @@ inline void code_image(const codeT code, const int scale = 7) {
 inline int code_image_width(const int scale = 7) { return scale * 3 + 2 /*border*/; }
 
 template <class T>
-class ring_buffer {
+class ring_buffer : no_copy {
     // There seems no way to enforce std::vector to allocate memory for exactly n objects...
     std::unique_ptr<T[]> m_data{};
     int m_capacity{};
@@ -142,8 +141,6 @@ class ring_buffer {
 public:
     // All {}-initialized.
     explicit ring_buffer(int capacity) : m_data(new T[capacity]{}), m_capacity(capacity) { assert(capacity > 0); }
-    ring_buffer(const ring_buffer&) = delete;
-    ring_buffer& operator=(const ring_buffer&) = delete;
 
     T& at(int pos) { return m_data[(m_0 + pos) % m_capacity]; }
     const T& at(int pos) const { return m_data[(m_0 + pos) % m_capacity]; }
@@ -171,14 +168,12 @@ public:
 
 // Always non-empty. (Initially contains a single {}.)
 template <class T>
-class record_for {
+class record_for : no_copy {
     ring_buffer<T> m_data;
     int m_pos = 0; // Current position.
 
 public:
     explicit record_for(int capacity) : m_data(capacity) { m_data.emplace_back(); }
-    record_for(const record_for&) = delete;
-    record_for& operator=(const record_for&) = delete;
 
     bool has_next() const { return m_pos < m_data.size() - 1; }
     bool has_prev() const { return m_pos > 0; }
@@ -218,7 +213,7 @@ inline auto create_shortcut(bool enabled) {
     };
 }
 
-class preview_group {
+class preview_group : no_copy {
     struct blobT {
         tile_with_texture tile{};
         bool newly_restarted = false;
@@ -231,10 +226,6 @@ class preview_group {
     ImVec2 texture_size() const { return ImVec2(m_init.size().x, m_init.size().y); }
 
 public:
-    preview_group() = default;
-    preview_group(const preview_group&) = delete;
-    preview_group& operator=(const preview_group&) = delete;
-
     void begin() {
         assert(std::ranges::all_of(m_blobs, [](const auto& blob) { return !blob.second.active; }));
     }
@@ -403,7 +394,7 @@ private:
 // TODO: support configurable page size.
 // TODO: support more generating modes.
 // TODO: support fixing target rule (e.g. fix to all-0 rule).
-class rule_generator {
+class rule_generator : no_copy {
     static constexpr int page_x = 3, page_y = 2, page_size = page_x * page_y;
 
     preview_group m_preview{}; // TODO: share from `main_data`?
@@ -417,10 +408,6 @@ class rule_generator {
     bool restart = false;
 
 public:
-    rule_generator() = default;
-    rule_generator(const rule_generator&) = delete;
-    rule_generator& operator=(const rule_generator&) = delete;
-
     void display(bool& open, const ruleT& rel, randT& m_rand, const int starting_id, const preview_group::speedT& speed,
                  shared_popup& m_popup, extra_message& m_message, std::optional<ruleT>& to_rule) {
         if (!open) {
@@ -517,7 +504,7 @@ private:
 // TODO: support setting to game-of-life.
 // TODO: support configurable init state.
 // TODO: support adding to temp list.
-class main_data {
+class main_data : no_copy {
     using isotropic = iso3::isotropic;
 
     record_for<ruleT> m_rule{20};
@@ -528,8 +515,6 @@ class main_data {
     extra_message m_message{};
 
     // Too large to be stack-allocated.
-    main_data(const main_data&) = delete;
-    main_data& operator=(const main_data&) = delete;
     main_data() { iso3::test_all(m_rand); }
 
 public:

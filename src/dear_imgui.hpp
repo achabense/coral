@@ -45,17 +45,23 @@ inline ImVec2 imgui_Clamp(ImVec2 a, ImVec2 min /*[*/, ImVec2 max /*]*/) {
     return {std::clamp(a.x, min.x, max.x), std::clamp(a.y, min.y, max.y)};
 }
 
+// Defined here just for convenience. Inheritance is generally avoided in this project; this is the only exception.
+// (Also prevents implicit move ctor/assignment.)
+class no_copy {
+protected:
+    no_copy() = default;
+    ~no_copy() = default;
+    no_copy(const no_copy&) = delete;
+    no_copy& operator=(const no_copy&) = delete;
+};
+
 // Can be shared across windows; doesn't rely on item id.
-class shared_popup {
+class shared_popup : no_copy {
     std::optional<int> owner_id; // Independent of imgui's id system.
     ImGuiID popup_id = 0;
     bool activated = false;
 
 public:
-    shared_popup() = default;
-    shared_popup(const shared_popup&) = delete;
-    shared_popup& operator=(const shared_popup&) = delete;
-
     // Must not change after assigned.
     void set_popup_id(const char* str_id) { popup_id = ImGui::GetID(str_id); }
 
@@ -89,17 +95,13 @@ public:
 };
 
 // Doesn't affect window system / regular tooltips.
-class extra_message {
+class extra_message : no_copy {
     std::string str;
     double time = 0;
     std::optional<ImVec2> pos;
     std::optional<ImVec2> str_size;
 
 public:
-    extra_message() = default;
-    extra_message(const extra_message&) = delete;
-    extra_message& operator=(const extra_message&) = delete;
-
     void set(const char* s, double t = 0.5 /*sec*/) {
         str = s;
         time = t;
