@@ -317,8 +317,7 @@ public:
         if (hovered && !ImGui::IsAnyItemActive() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
             m_popup.open(id);
         }
-        if (m_popup.begin_popup(id)) {
-            imgui_LockScroll();
+        if (m_popup.begin_popup(id, /*lock-scroll*/ true)) {
             select |= can_select && ImGui::Selectable("Select");
             copy |= ImGui::Selectable("Copy");
             m_popup.end_popup();
@@ -547,8 +546,9 @@ public:
                 ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
                 m_popup.open(-100);
             }
-            if (m_popup.begin_popup(-100)) {
-                // imgui_LockScroll(); // No need to disable scrolling.
+            if (m_popup.opened(-100) /*micro optimization*/ &&
+                m_popup.begin_popup(-100, !ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem |
+                                                                  ImGuiHoveredFlags_AllowWhenBlockedByPopup))) {
                 select_group(to_locate, m_rand);
                 m_popup.end_popup();
             }
@@ -650,20 +650,25 @@ private:
     }
 
     static void select_group(int& to_locate, randT& m_rand) {
+        auto shortcut =
+            create_shortcut(!ImGui::IsAnyItemActive() && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows |
+                                                                                ImGuiFocusedFlags_NoPopupHierarchy));
+
         // TODO: working but technically should belong to object.
         static iso3::envT cells{};
         static record_for<iso3::envT> record{10}; // Only for "Locate" and "Random".
         {
             ImGui::BeginDisabled(!record.has_prev());
-            if (ImGui::SmallButton("<<")) {
+            if (ImGui::SmallButton("<<") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_LeftArrow, repeat_mode::no_repeat)) {
                 record.to_prev();
                 cells = record.get();
                 to_locate = iso3::encode(cells);
             }
             ImGui::EndDisabled();
             ImGui::SameLine();
+            // TODO: enhance to ">>>"?
             ImGui::BeginDisabled(!record.has_next());
-            if (ImGui::SmallButton(">>")) {
+            if (ImGui::SmallButton(">>") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_RightArrow, repeat_mode::no_repeat)) {
                 record.to_next();
                 cells = record.get();
                 to_locate = iso3::encode(cells);
@@ -738,11 +743,12 @@ inline void frame_main(main_data& data) {
         ImGui::Text("%d fps", (int)std::round(ImGui::GetIO().Framerate));
         ImGui::SameLine();
         ImGui::BeginDisabled(!data.has_prev());
-        data.to_prev |= ImGui::Button("Undo") || shortcut(ctrl_mode::ctrl, ImGuiKey_Z, repeat_mode::no_repeat);
+        data.to_prev |= ImGui::Button("<<") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_LeftArrow, repeat_mode::no_repeat);
         ImGui::EndDisabled();
         ImGui::SameLine();
         ImGui::BeginDisabled(!data.has_next());
-        data.to_next |= ImGui::Button("Redo") || shortcut(ctrl_mode::ctrl, ImGuiKey_Y, repeat_mode::no_repeat);
+        data.to_next |=
+            ImGui::Button(">>") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_RightArrow, repeat_mode::no_repeat);
         ImGui::EndDisabled();
         ImGui::SameLine();
         // TODO: support pausing/restarting individual windows.
