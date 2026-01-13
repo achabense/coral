@@ -776,7 +776,7 @@ private:
             m_rule.to_prev();
             restart = true;
         }
-        if (to_next, false) {
+        if (to_next) {
             m_rule.to_next();
             restart = true;
         }
