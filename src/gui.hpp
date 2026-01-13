@@ -395,16 +395,16 @@ class rule_generator : no_copy {
     bool restart = false;
 
 public:
-    void display(bool& open, const ruleT& rel, randT& m_rand, preview_group& m_preview, const int starting_id,
-                 const preview_group::speedT& speed, shared_popup& m_popup, extra_message& m_message,
-                 std::optional<ruleT>& to_rule) {
+    bool open = false;
+    void display_if_open(const char* window_name, const ruleT& rel, randT& m_rand, preview_group& m_preview,
+                         const int starting_id, const preview_group::speedT& speed, shared_popup& m_popup,
+                         extra_message& m_message, std::optional<ruleT>& to_rule) {
         if (!open) {
             return;
         }
 
-        // TODO: using fixed name for convenience (technically should be specified per object).
         ImGui::SetNextWindowCollapsed(false, ImGuiCond_Appearing);
-        if (ImGui::Begin("Generate", &open,
+        if (ImGui::Begin(window_name, &open,
                          ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav |
                              ImGuiWindowFlags_AlwaysAutoResize)) {
             header(rel, m_rand);
@@ -492,20 +492,22 @@ class rule_loader : no_copy {
     bool restart = false;
 
 public:
-    void display(bool& open, preview_group& m_preview, const int starting_id, const preview_group::speedT& speed,
-                 shared_popup& m_popup, extra_message& m_message, std::optional<ruleT>& to_rule) {
+    bool open = false;
+    void display_if_open(const char* window_name, preview_group& m_preview, const int starting_id,
+                         const preview_group::speedT& speed, shared_popup& m_popup, extra_message& m_message,
+                         std::optional<ruleT>& to_rule) {
         if (!open) {
             return;
         }
 
-        // TODO: using fixed name for convenience (technically should be specified per object).
         ImGui::SetNextWindowCollapsed(false, ImGuiCond_Appearing);
-        if (ImGui::Begin("Load", &open,
+        if (ImGui::Begin(window_name, &open,
                          ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav |
                              ImGuiWindowFlags_AlwaysAutoResize)) {
             header(m_message);
             ImGui::Separator();
 
+            // TODO: -> separate pages (instead of a single scrollable page)?
             const ImVec2 item_spacing = ImGui::GetStyle().ItemSpacing;
             const ImVec2 child_size =
                 m_preview.image_size() * ImVec2(2, 2) + item_spacing + ImVec2(ImGui::GetStyle().ScrollbarSize, 0);
@@ -579,35 +581,29 @@ class main_data : no_copy {
     shared_popup m_popup{};
     extra_message m_message{};
 
+    preview_group::speedT speed{.pause = false, .step = 1, .interval = 0};
+    std::optional<ruleT> to_rule = std::nullopt; // TODO: use ruleT + bool instead?
+    bool restart = false;
+
     // Too large to be stack-allocated.
+    // TODO: reconsider where to call `test_all()`.
     main_data() { iso3::test_all(m_rand); }
 
 public:
     static auto make_unique() { return std::unique_ptr<main_data>(new main_data{}); }
 
-    // TODO: should not be public.
-    preview_group::speedT speed{.pause = false, .step = 1, .interval = 0};
-
-    std::optional<ruleT> to_rule = std::nullopt; // TODO: use ruleT + bool instead?
-    bool reset = false;
-    bool restart = false;
-
-    bool open_load = false;
-    bool open_generate = false;
-
-    bool has_prev() const { return m_rule.has_prev(); }
-    bool has_next() const { return m_rule.has_next(); }
-    bool to_prev = false;
-    bool to_next = false;
-
     void display() {
-        flush();
+        header();
+        ImGui::Separator();
+
         m_popup.set_popup_id("Popup");
         m_popup.begin();
         m_preview.begin();
 
-        m_loader.display(open_load, m_preview, 20000, speed, m_popup, m_message, to_rule);
-        m_generator.display(open_generate, m_rule.get(), m_rand, m_preview, 10000, speed, m_popup, m_message, to_rule);
+        // TODO: using fixed names for convenience (technically should be specified per object).
+        m_loader.display_if_open("Load", m_preview, 20000, speed, m_popup, m_message, to_rule);
+        m_generator.display_if_open("Generate", m_rule.get(), m_rand, m_preview, 10000, speed, m_popup, m_message,
+                                    to_rule);
 
         // TODO: slightly wasteful. (Can reuse memory by making `record_for::get()` return non-const ref, but that's risky.)
         std::unique_ptr<ruleT> temp_rule(new ruleT{m_rule.get()});
@@ -707,9 +703,68 @@ public:
     }
 
 private:
-    void flush() {
-        // TODO: whether to compare the rule (same -> no restart)?
-        if (std::exchange(reset, false)) {
+    void header() {
+        // TODO: uncertain about the design (condition & op).
+        auto shortcut =
+            create_shortcut(!ImGui::IsAnyItemActive() && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows |
+                                                                                ImGuiFocusedFlags_NoPopupHierarchy));
+
+        ImGui::Checkbox("Load", &m_loader.open);
+        ImGui::SameLine();
+        ImGui::Checkbox("Generate", &m_generator.open);
+        ImGui::SameLine();
+        const bool reset = imgui_DoubleClickButton("Reset"); // TODO: the name is misleading.
+        ImGui::SameLine();
+        ImGui::Text("%d fps", (int)std::round(ImGui::GetIO().Framerate)); // TODO: move elsewhere.
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!m_rule.has_prev());
+        const bool to_prev =
+            ImGui::Button("<<") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_LeftArrow, repeat_mode::no_repeat);
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!m_rule.has_next());
+        const bool to_next =
+            ImGui::Button(">>") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_RightArrow, repeat_mode::no_repeat);
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        // TODO: support pausing/restarting individual windows.
+        if (ImGui::Button("Restart") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_R, repeat_mode::no_repeat)) {
+            restart = true;
+        }
+        ImGui::SameLine();
+        ImGui::Checkbox("Pause", &speed.pause);
+        if (shortcut(ctrl_mode::no_ctrl, ImGuiKey_Space, repeat_mode::no_repeat)) {
+            speed.pause = !speed.pause;
+        }
+        constexpr int step_min = 1, step_max = decltype(speed)::max_step;
+        constexpr int interval_min = 0, interval_max = 20;
+        ImGui::SameLine();
+        imgui_SliderIntEx(ImGui::GetFontSize() * 10, "Step", speed.step, step_min, step_max, true);
+        ImGui::SameLine();
+        imgui_SliderIntEx(ImGui::GetFontSize() * 10, "Interval", speed.interval, interval_min, interval_max, true);
+        {
+            ImGui::PushID("Step"); // Workaround to highlight the step buttons.
+            if (shortcut(ctrl_mode::no_ctrl, ImGuiKey_1, repeat_mode::repeat, ImGui::GetID("-"))) {
+                --speed.step;
+            }
+            if (shortcut(ctrl_mode::no_ctrl, ImGuiKey_2, repeat_mode::repeat, ImGui::GetID("+"))) {
+                ++speed.step;
+            }
+            ImGui::PopID();
+            ImGui::PushID("Interval");
+            if (shortcut(ctrl_mode::no_ctrl, ImGuiKey_3, repeat_mode::repeat, ImGui::GetID("-"))) {
+                --speed.interval;
+            }
+            if (shortcut(ctrl_mode::no_ctrl, ImGuiKey_4, repeat_mode::repeat, ImGui::GetID("+"))) {
+                ++speed.interval;
+            }
+            ImGui::PopID();
+            speed.step = std::clamp(speed.step, step_min, step_max);
+            speed.interval = std::clamp(speed.interval, interval_min, interval_max);
+        }
+
+        if (reset) {
+            assert(!to_rule);
             to_rule.emplace();
         }
         if (to_rule) {
@@ -717,11 +772,11 @@ private:
             to_rule.reset();
             restart = true;
         }
-        if (std::exchange(to_prev, false)) {
+        if (to_prev) {
             m_rule.to_prev();
             restart = true;
         }
-        if (std::exchange(to_next, false)) {
+        if (to_next, false) {
             m_rule.to_next();
             restart = true;
         }
@@ -807,63 +862,6 @@ inline void frame_main(main_data& data) {
     if (ImGui::Begin("Main", nullptr,
                      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoNav |
                          ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings)) {
-        // TODO: uncertain about the design (condition & op).
-        auto shortcut =
-            create_shortcut(!ImGui::IsAnyItemActive() && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows |
-                                                                                ImGuiFocusedFlags_NoPopupHierarchy));
-
-        ImGui::Checkbox("Load", &data.open_load);
-        ImGui::SameLine();
-        ImGui::Checkbox("Generate", &data.open_generate);
-        ImGui::SameLine();
-        data.reset |= imgui_DoubleClickButton("Reset");
-        ImGui::SameLine();
-        ImGui::Text("%d fps", (int)std::round(ImGui::GetIO().Framerate));
-        ImGui::SameLine();
-        ImGui::BeginDisabled(!data.has_prev());
-        data.to_prev |= ImGui::Button("<<") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_LeftArrow, repeat_mode::no_repeat);
-        ImGui::EndDisabled();
-        ImGui::SameLine();
-        ImGui::BeginDisabled(!data.has_next());
-        data.to_next |=
-            ImGui::Button(">>") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_RightArrow, repeat_mode::no_repeat);
-        ImGui::EndDisabled();
-        ImGui::SameLine();
-        // TODO: support pausing/restarting individual windows.
-        data.restart |= ImGui::Button("Restart") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_R, repeat_mode::no_repeat);
-        ImGui::SameLine();
-        ImGui::Checkbox("Pause", &data.speed.pause);
-        if (shortcut(ctrl_mode::no_ctrl, ImGuiKey_Space, repeat_mode::no_repeat)) {
-            data.speed.pause = !data.speed.pause;
-        }
-        constexpr int step_min = 1, step_max = decltype(data.speed)::max_step;
-        constexpr int interval_min = 0, interval_max = 20;
-        ImGui::SameLine();
-        imgui_SliderIntEx(ImGui::GetFontSize() * 10, "Step", data.speed.step, step_min, step_max, true);
-        ImGui::SameLine();
-        imgui_SliderIntEx(ImGui::GetFontSize() * 10, "Interval", data.speed.interval, interval_min, interval_max, true);
-        {
-            ImGui::PushID("Step"); // Workaround to highlight the step buttons.
-            if (shortcut(ctrl_mode::no_ctrl, ImGuiKey_1, repeat_mode::repeat, ImGui::GetID("-"))) {
-                --data.speed.step;
-            }
-            if (shortcut(ctrl_mode::no_ctrl, ImGuiKey_2, repeat_mode::repeat, ImGui::GetID("+"))) {
-                ++data.speed.step;
-            }
-            ImGui::PopID();
-            ImGui::PushID("Interval");
-            if (shortcut(ctrl_mode::no_ctrl, ImGuiKey_3, repeat_mode::repeat, ImGui::GetID("-"))) {
-                --data.speed.interval;
-            }
-            if (shortcut(ctrl_mode::no_ctrl, ImGuiKey_4, repeat_mode::repeat, ImGui::GetID("+"))) {
-                ++data.speed.interval;
-            }
-            ImGui::PopID();
-            data.speed.step = std::clamp(data.speed.step, step_min, step_max);
-            data.speed.interval = std::clamp(data.speed.interval, interval_min, interval_max);
-        }
-
-        ImGui::Separator();
         data.display();
     };
     ImGui::End();
