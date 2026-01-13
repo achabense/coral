@@ -402,10 +402,10 @@ namespace iso3 {
         return false;
     }
 
-    inline bool from_string(std::vector<ruleT>& rule, std::string_view& str, const isotropic& iso = isotropic::get()) {
+    inline bool from_string(std::vector<ruleT>& vec, std::string_view& str, const isotropic& iso = isotropic::get()) {
         const auto extr = _misc_::extract_string(str);
         if (!extr.empty()) {
-            _misc_::from_string_unchecked(rule.emplace_back(), extr, iso);
+            _misc_::from_string_unchecked(vec.emplace_back(), extr, iso);
             return true;
         };
         return false;

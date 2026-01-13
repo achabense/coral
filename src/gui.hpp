@@ -378,7 +378,7 @@ private:
     }
 };
 
-// !!TODO: unable to restart this window with shortcuts. (Each window should have their own pause-state / shortcuts.)
+// !!TODO: (& rule_loader) unable to restart this window with shortcuts. (Each window should have their own pause-state / shortcuts.)
 // TODO: support configurable page size.
 // TODO: support more generating modes.
 // TODO: support fixing target rule (e.g. fix to all-0 rule).
@@ -411,9 +411,13 @@ public:
             ImGui::Separator();
 
             m_preview.restart_all = std::exchange(restart, false);
+            const int item_spacing = ImGui::GetStyle().ItemSpacing.x;
+            constexpr int per_line = page_x;
             for (int i = 0; i < page_size; ++i) {
-                if (i != 0 && (i % page_x) != 0) {
-                    ImGui::SameLine();
+                if (i % per_line != 0) {
+                    ImGui::SameLine(0, item_spacing);
+                } else if (i != 0) {
+                    // ImGui::Separator();
                 }
                 if (m_pos + i < m_rules.size()) {
                     m_preview.image(m_rules.at(m_pos + i), starting_id + i, speed, m_popup, m_message, &to_rule);
@@ -480,7 +484,87 @@ private:
     }
 };
 
-// TODO: support loading list of rules.
+// TODO: support loading from file.
+// TODO: support resizing the window.
+class rule_loader : no_copy {
+    std::vector<ruleT> m_rules{};
+
+    bool restart = false;
+
+public:
+    void display(bool& open, preview_group& m_preview, const int starting_id, const preview_group::speedT& speed,
+                 shared_popup& m_popup, extra_message& m_message, std::optional<ruleT>& to_rule) {
+        if (!open) {
+            return;
+        }
+
+        // TODO: using fixed name for convenience (technically should be specified per object).
+        ImGui::SetNextWindowCollapsed(false, ImGuiCond_Appearing);
+        if (ImGui::Begin("Load", &open,
+                         ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav |
+                             ImGuiWindowFlags_AlwaysAutoResize)) {
+            header(m_message);
+            ImGui::Separator();
+
+            const ImVec2 item_spacing = ImGui::GetStyle().ItemSpacing;
+            const ImVec2 child_size =
+                m_preview.image_size() * ImVec2(2, 2) + item_spacing + ImVec2(ImGui::GetStyle().ScrollbarSize, 0);
+            if (ImGui::BeginChild("Rules", child_size) && !m_rules.empty()) {
+                m_preview.restart_all = std::exchange(restart, false);
+                const int total = m_rules.size();
+                constexpr int per_line = 2;
+                for (int i = 0; i < total; ++i) {
+                    if (i % per_line != 0) {
+                        ImGui::SameLine(0, item_spacing.x);
+                    } else if (i != 0) {
+                        // ImGui::Separator();
+                    }
+                    m_preview.image(m_rules[i], starting_id + i, speed, m_popup, m_message, &to_rule);
+                }
+                m_preview.restart_all = false;
+            }
+            ImGui::EndChild();
+        }
+        ImGui::End();
+    }
+
+private:
+    void header(extra_message& m_message) {
+        auto shortcut =
+            create_shortcut(!ImGui::IsAnyItemActive() && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows |
+                                                                                ImGuiFocusedFlags_NoPopupHierarchy));
+
+        ImGui::BeginDisabled(m_rules.empty());
+        if (imgui_DoubleClickButton("Clear")) {
+            m_rules.clear();
+            m_rules.shrink_to_fit();
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        // TODO: support multiple lists (instead of replacing the existing one).
+        if (imgui_DoubleClickButton("Paste") || shortcut(ctrl_mode::ctrl, ImGuiKey_V, repeat_mode::no_repeat)) {
+            std::vector<ruleT> rules = extract_rules(ImGui::GetClipboardText());
+            if (!rules.empty()) {
+                restart = true;
+                m_rules.swap(rules);
+            } else {
+                m_message.set("No rules.");
+            }
+        }
+    }
+
+    static std::vector<ruleT> extract_rules(std::string_view str, int reserve = 8, int max = 100) {
+        std::vector<ruleT> rules{};
+        rules.reserve(reserve);
+        for (int i = 0; i < max; ++i) {
+            if (!iso3::from_string(rules, str)) {
+                break;
+            }
+        }
+        return rules;
+    }
+};
+
 // TODO: support setting to game-of-life.
 // TODO: support configurable init state.
 // TODO: support adding to temp list.
@@ -489,6 +573,7 @@ class main_data : no_copy {
 
     record_for<ruleT> m_rule{20};
     preview_group m_preview{};
+    rule_loader m_loader{};
     rule_generator m_generator{};
     randT m_rand{uint32_t(std::time(0))}; // TODO: can be static var.
     shared_popup m_popup{};
@@ -506,8 +591,8 @@ public:
     std::optional<ruleT> to_rule = std::nullopt; // TODO: use ruleT + bool instead?
     bool reset = false;
     bool restart = false;
-    bool paste = false;
 
+    bool open_load = false;
     bool open_generate = false;
 
     bool has_prev() const { return m_rule.has_prev(); }
@@ -521,6 +606,7 @@ public:
         m_popup.begin();
         m_preview.begin();
 
+        m_loader.display(open_load, m_preview, 20000, speed, m_popup, m_message, to_rule);
         m_generator.display(open_generate, m_rule.get(), m_rand, m_preview, 10000, speed, m_popup, m_message, to_rule);
 
         // TODO: slightly wasteful. (Can reuse memory by making `record_for::get()` return non-const ref, but that's risky.)
@@ -626,14 +712,6 @@ private:
         if (std::exchange(reset, false)) {
             to_rule.emplace();
         }
-        if (std::exchange(paste, false)) {
-            if (!iso3::from_string(to_rule.emplace(), ImGui::GetClipboardText())) {
-                to_rule.reset();
-                m_message.set("Nothing to paste.");
-            } else {
-                m_message.set("Pasted.");
-            }
-        }
         if (to_rule) {
             m_rule.set(*to_rule);
             to_rule.reset();
@@ -734,11 +812,11 @@ inline void frame_main(main_data& data) {
             create_shortcut(!ImGui::IsAnyItemActive() && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows |
                                                                                 ImGuiFocusedFlags_NoPopupHierarchy));
 
+        ImGui::Checkbox("Load", &data.open_load);
+        ImGui::SameLine();
         ImGui::Checkbox("Generate", &data.open_generate);
         ImGui::SameLine();
         data.reset |= imgui_DoubleClickButton("Reset");
-        ImGui::SameLine();
-        data.paste |= imgui_DoubleClickButton("Paste") || shortcut(ctrl_mode::ctrl, ImGuiKey_V, repeat_mode::no_repeat);
         ImGui::SameLine();
         ImGui::Text("%d fps", (int)std::round(ImGui::GetIO().Framerate));
         ImGui::SameLine();
