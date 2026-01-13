@@ -216,7 +216,6 @@ inline auto create_shortcut(bool enabled) {
 class preview_group : no_copy {
     struct blobT {
         tile_with_texture tile{};
-        bool newly_restarted = false;
         bool active = false;
     };
 
@@ -237,17 +236,10 @@ public:
         // https://eel.is/c++draft/unord.map.erasure
         std::erase_if(m_blobs, [](auto& blob) { return !std::exchange(blob.second.active, false); });
     }
-    void clear() {
-        if (!m_blobs.empty()) {
-            m_blobs.clear();
-        }
-    }
-    void restart_all() {
-        for (auto& [_, blob] : m_blobs) {
-            blob.tile.assign(m_init);
-            blob.newly_restarted = true;
-        }
-    }
+
+    // !!TODO: fragile workaround for restarting sub-groups.
+    // (Should either be stack-like (push/pop) or controlled by speedT (should rename).)
+    bool restart_all = false;
 
     struct speedT {
         bool pause = false;
@@ -268,7 +260,7 @@ public:
     // right-click -> op menu (select/copy)
     // no-ctrl + s/d/f -> extra step
     // `id` must be unique per group & imgui's id stack (for unique `GetItemID()`).
-    void image(const ruleT& rule, const speedT& speed, const int id, shared_popup& m_popup, extra_message& m_message,
+    void image(const ruleT& rule, const int id, const speedT& speed, shared_popup& m_popup, extra_message& m_message,
                std::optional<ruleT>* to_rule = nullptr) {
         constexpr ImVec2 border = {1, 1};
         // TODO: is it possible to distinguish items with no id from the background (e.g. IsBgHovered())?
@@ -295,13 +287,10 @@ public:
         assert(!blob.active);
         blob.active = true;
         tile_with_texture& tile = blob.tile;
-        if (tile.empty()) {
-            tile.assign(m_init);
-            blob.newly_restarted = true;
-        }
         // TODO: whether to run before displaying?
         // TODO: whether to always skip the init state?
-        if (std::exchange(blob.newly_restarted, false)) {
+        if (tile.empty() || restart_all) {
+            tile.assign(m_init);
             tile.run(rule, speed.step);
         } else if (op && (op == 'S' || op == 'D' || op == 'F')) {
             tile.run(rule, op == 'S' ? speed.step : op == 'D' ? 1 : /*'F'*/ speed.max_step);
@@ -390,14 +379,13 @@ private:
     }
 };
 
-// !!TODO: unable to restart this window. (Each window should have their own pause-state / shortcuts.)
+// !!TODO: unable to restart this window with shortcuts. (Each window should have their own pause-state / shortcuts.)
 // TODO: support configurable page size.
 // TODO: support more generating modes.
 // TODO: support fixing target rule (e.g. fix to all-0 rule).
 class rule_generator : no_copy {
     static constexpr int page_x = 3, page_y = 2, page_size = page_x * page_y;
 
-    preview_group m_preview{}; // TODO: share from `main_data`?
     ring_buffer<ruleT> m_rules{page_size * 20};
     int m_pos = 0; // Position for the first rule in the page.
 
@@ -408,12 +396,10 @@ class rule_generator : no_copy {
     bool restart = false;
 
 public:
-    void display(bool& open, const ruleT& rel, randT& m_rand, const int starting_id, const preview_group::speedT& speed,
-                 shared_popup& m_popup, extra_message& m_message, std::optional<ruleT>& to_rule) {
+    void display(bool& open, const ruleT& rel, randT& m_rand, preview_group& m_preview, const int starting_id,
+                 const preview_group::speedT& speed, shared_popup& m_popup, extra_message& m_message,
+                 std::optional<ruleT>& to_rule) {
         if (!open) {
-            // TODO: workaround for saving memory (without manual clearing, the textures will remain in memory when the window is collapsed / closed.)
-            // (The main window is assumed to never be hidden, so there's no need to clear() for the random-access group. That's somewhat messy.)
-            m_preview.clear();
             return;
         }
 
@@ -425,23 +411,18 @@ public:
             header(rel, m_rand);
             ImGui::Separator();
 
-            if (std::exchange(restart, false)) {
-                m_preview.restart_all();
-            }
-            m_preview.begin();
+            m_preview.restart_all = std::exchange(restart, false);
             for (int i = 0; i < page_size; ++i) {
                 if (i != 0 && (i % page_x) != 0) {
                     ImGui::SameLine();
                 }
                 if (m_pos + i < m_rules.size()) {
-                    m_preview.image(m_rules.at(m_pos + i), speed, starting_id + i, m_popup, m_message, &to_rule);
+                    m_preview.image(m_rules.at(m_pos + i), starting_id + i, speed, m_popup, m_message, &to_rule);
                 } else {
                     m_preview.dummy();
                 }
             }
-            m_preview.end();
-        } else {
-            m_preview.clear(); // e.g. collapsed.
+            m_preview.restart_all = false;
         }
         ImGui::End();
     }
@@ -540,16 +521,18 @@ public:
         m_popup.set_popup_id("Popup");
         m_popup.begin();
         m_preview.begin();
+
+        m_generator.display(open_generate, m_rule.get(), m_rand, m_preview, 10000, speed, m_popup, m_message, to_rule);
+
         // TODO: slightly wasteful. (Can reuse memory by making `record_for::get()` return non-const ref, but that's risky.)
         std::unique_ptr<ruleT> temp_rule(new ruleT{m_rule.get()});
         ruleT& rule = *temp_rule;
-
-        m_generator.display(open_generate, rule, m_rand, 10000, speed, m_popup, m_message, to_rule);
+        m_preview.restart_all = std::exchange(restart, false);
 
         const int item_spacing = ImGui::GetStyle().ItemSpacing.x;
         int preview_index = 0;
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + code_image_width() + item_spacing); // For alignment.
-        m_preview.image(rule, speed, preview_index++, m_popup, m_message, nullptr);
+        m_preview.image(rule, preview_index++, speed, m_popup, m_message, nullptr);
 
         ImGui::Separator();
 
@@ -614,7 +597,7 @@ public:
                 ImGui::BeginGroup();
                 for (int i = 0; i < cellT::states - 1; ++i) {
                     iso3::increase(rule, group);
-                    m_preview.image(rule, speed, preview_index++, m_popup, m_message, &to_rule);
+                    m_preview.image(rule, preview_index++, speed, m_popup, m_message, &to_rule);
                     if (ImGui::IsItemVisible()) {
                         const ImVec2 image_min = ImGui::GetItemRectMin();
                         const ImVec2 image_max = ImGui::GetItemRectMax();
@@ -629,7 +612,9 @@ public:
         }
         ImGui::EndChild();
 
+        m_preview.restart_all = false;
         assert(rule == m_rule.get());
+
         m_preview.end();
         m_popup.end();
         m_message.display();
@@ -661,9 +646,6 @@ private:
         if (std::exchange(to_next, false)) {
             m_rule.to_next();
             restart = true;
-        }
-        if (std::exchange(restart, false)) {
-            m_preview.restart_all();
         }
     }
 
