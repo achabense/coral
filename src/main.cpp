@@ -6,8 +6,8 @@
 
 #include "gui.hpp"
 
-static SDL_Window* window = nullptr;
-static SDL_Renderer* renderer = nullptr;
+static_var SDL_Window* window = nullptr;
+static_var SDL_Renderer* renderer = nullptr;
 
 [[noreturn]] static void exit_failure() {
     assert(false);
@@ -68,6 +68,7 @@ void texture_destroy(ImTextureID texture) {
 
 int main(int, char**) {
     assert(!window && !renderer);
+    iso3::test_all(get_rand());
 
     // Setup SDL.
     {
@@ -151,7 +152,7 @@ int main(int, char**) {
         }
 
         constexpr int max_fps = 100; // May be further limited by vsync (like 60fps).
-        static Uint64 last = 0;      // Don't have to be static, but moving out of loop makes no actual benefit.
+        static_var Uint64 last = 0;  // No need to be static, but moving out of loop makes no actual benefit.
         const Uint64 now = SDL_GetTicksNS();
         const Uint64 until = last + (1000 * 1000 * 1000) /*ns*/ / max_fps;
         if (now < until) {

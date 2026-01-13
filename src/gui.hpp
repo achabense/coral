@@ -13,6 +13,13 @@ using iso3::randT;
 using iso3::ruleT;
 using iso3::tileT;
 
+#define static_var static // For tracking non-const static variables.
+
+inline randT& get_rand() {
+    static_var randT rand{uint32_t(std::time(0))};
+    return rand;
+}
+
 // TODO: support specifying colors? (Shouldn't affect `render_code()`.)
 // (So for example, may map two values to the same color to see how the 3rd value appear in the pattern.)
 inline ImU32 color_for(const cellT c) {
@@ -213,6 +220,12 @@ inline auto create_shortcut(bool enabled) {
     };
 }
 
+inline bool no_active_and_window_focused() {
+    return !ImGui::IsAnyItemActive() &&
+           ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows | ImGuiFocusedFlags_NoPopupHierarchy);
+}
+
+// TODO: support configurable init state.
 class preview_group : no_copy {
     struct blobT {
         tile_with_texture tile{};
@@ -355,7 +368,7 @@ private:
     static void display_in_tooltip(ImTextureID texture, ImVec2 texture_size, ImVec2 center, bool can_scale) {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {1, 1}); // {0, 0} will overlap.
         if (ImGui::BeginTooltip()) {
-            static int scale = 3;
+            static_var int scale = 3;
             if (can_scale) {
                 const float wheel = ImGui::GetIO().MouseWheel;
                 if (wheel != 0) {
@@ -396,9 +409,9 @@ class rule_generator : no_copy {
 
 public:
     bool open = false;
-    void display_if_open(const char* window_name, const ruleT& rel, randT& m_rand, preview_group& m_preview,
-                         const int starting_id, const preview_group::speedT& speed, shared_popup& m_popup,
-                         extra_message& m_message, std::optional<ruleT>& to_rule) {
+    void display_if_open(const char* window_name, const ruleT& rel, preview_group& m_preview, const int starting_id,
+                         const preview_group::speedT& speed, shared_popup& m_popup, extra_message& m_message,
+                         std::optional<ruleT>& to_rule) {
         if (!open) {
             return;
         }
@@ -407,7 +420,7 @@ public:
         if (ImGui::Begin(window_name, &open,
                          ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav |
                              ImGuiWindowFlags_AlwaysAutoResize)) {
-            header(rel, m_rand);
+            header(rel);
             ImGui::Separator();
 
             m_preview.restart_all = std::exchange(restart, false);
@@ -431,11 +444,9 @@ public:
     }
 
 private:
-    void header(const ruleT& rel, randT& m_rand) {
+    void header(const ruleT& rel) {
         assert(m_rules.empty() ? m_pos == 0 : 0 <= m_pos && m_pos < m_rules.size());
-        auto shortcut =
-            create_shortcut(!ImGui::IsAnyItemActive() && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows |
-                                                                                ImGuiFocusedFlags_NoPopupHierarchy));
+        auto shortcut = create_shortcut(no_active_and_window_focused());
 
         ImGui::BeginDisabled(m_rules.empty());
         if (imgui_DoubleClickButton("Clear")) {
@@ -455,13 +466,14 @@ private:
             restart = true;
             const int page_end = m_pos + page_size;
             if (m_rules.empty() || m_rules.size() <= page_end) {
+                randT& rand = get_rand();
                 const int num = m_rules.size() < page_end ? page_end - m_rules.size() : page_size;
                 for (int i = 0; i < num; ++i) {
                     // iso3::rand_rule(m_rules.emplace_back(), m_rand, {64, 4, 1});
                     if (m_mode == rand_mode::c) {
-                        iso3::randomize_c(m_rules.emplace_back() = rel, m_rand, m_dist);
+                        iso3::randomize_c(m_rules.emplace_back() = rel, rand, m_dist);
                     } else {
-                        iso3::randomize_p(m_rules.emplace_back() = rel, m_rand, m_dist / 100.0);
+                        iso3::randomize_p(m_rules.emplace_back() = rel, rand, m_dist / 100.0);
                     }
                 }
                 assert(m_rules.size() >= page_size);
@@ -470,6 +482,7 @@ private:
                 m_pos += page_size;
             }
         }
+        // TODO: add "|>".
         // !!TODO: should explain in UI...
         ImGui::SameLine();
         if (ImGui::RadioButton("P", m_mode == rand_mode::p)) {
@@ -532,9 +545,7 @@ public:
 
 private:
     void header(extra_message& m_message) {
-        auto shortcut =
-            create_shortcut(!ImGui::IsAnyItemActive() && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows |
-                                                                                ImGuiFocusedFlags_NoPopupHierarchy));
+        auto shortcut = create_shortcut(no_active_and_window_focused());
 
         ImGui::BeginDisabled(m_rules.empty());
         if (imgui_DoubleClickButton("Clear")) {
@@ -568,7 +579,6 @@ private:
 };
 
 // TODO: support setting to game-of-life.
-// TODO: support configurable init state.
 // TODO: support adding to temp list.
 class main_data : no_copy {
     using isotropic = iso3::isotropic;
@@ -577,7 +587,6 @@ class main_data : no_copy {
     preview_group m_preview{};
     rule_loader m_loader{};
     rule_generator m_generator{};
-    randT m_rand{uint32_t(std::time(0))}; // TODO: can be static var.
     shared_popup m_popup{};
     extra_message m_message{};
 
@@ -586,8 +595,7 @@ class main_data : no_copy {
     bool restart = false;
 
     // Too large to be stack-allocated.
-    // TODO: reconsider where to call `test_all()`.
-    main_data() { iso3::test_all(m_rand); }
+    main_data() = default;
 
 public:
     static auto make_unique() { return std::unique_ptr<main_data>(new main_data{}); }
@@ -602,8 +610,7 @@ public:
 
         // TODO: using fixed names for convenience (technically should be specified per object).
         m_loader.display_if_open("Load", m_preview, 20000, speed, m_popup, m_message, to_rule);
-        m_generator.display_if_open("Generate", m_rule.get(), m_rand, m_preview, 10000, speed, m_popup, m_message,
-                                    to_rule);
+        m_generator.display_if_open("Generate", m_rule.get(), m_preview, 10000, speed, m_popup, m_message, to_rule);
 
         // TODO: slightly wasteful. (Can reuse memory by making `record_for::get()` return non-const ref, but that's risky.)
         std::unique_ptr<ruleT> temp_rule(new ruleT{m_rule.get()});
@@ -631,7 +638,7 @@ public:
             if (m_popup.opened(-100) /*micro optimization*/ &&
                 m_popup.begin_popup(-100, !ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem |
                                                                   ImGuiHoveredFlags_AllowWhenBlockedByPopup))) {
-                select_group(to_locate, m_rand);
+                select_group(to_locate);
                 m_popup.end_popup();
             }
 
@@ -705,9 +712,7 @@ public:
 private:
     void header() {
         // TODO: uncertain about the design (condition & op).
-        auto shortcut =
-            create_shortcut(!ImGui::IsAnyItemActive() && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows |
-                                                                                ImGuiFocusedFlags_NoPopupHierarchy));
+        auto shortcut = create_shortcut(no_active_and_window_focused());
 
         ImGui::Checkbox("Load", &m_loader.open);
         ImGui::SameLine();
@@ -782,14 +787,12 @@ private:
         }
     }
 
-    static void select_group(int& to_locate, randT& m_rand) {
-        auto shortcut =
-            create_shortcut(!ImGui::IsAnyItemActive() && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows |
-                                                                                ImGuiFocusedFlags_NoPopupHierarchy));
+    static void select_group(int& to_locate) {
+        auto shortcut = create_shortcut(no_active_and_window_focused());
 
         // TODO: working but technically should belong to object.
-        static iso3::envT cells{};
-        static record_for<iso3::envT> record{10}; // Only for "Locate" and "Random".
+        static_var iso3::envT cells{};
+        static_var record_for<iso3::envT> record{10}; // Only for "Locate" and "Random".
         {
             ImGui::BeginDisabled(!record.has_prev());
             if (ImGui::SmallButton("<<") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_LeftArrow, repeat_mode::no_repeat)) {
@@ -821,7 +824,7 @@ private:
                 if (const int i = pos.y * 3 + pos.x; 0 <= i && i < 9) {
                     cellT& cell = cells.data[i];
                     // Left-click -> change value; right-click -> use clicked value.
-                    static cellT v = {};
+                    static_var cellT v = {};
                     if (ImGui::IsItemActivated()) {
                         v = ImGui::IsMouseClicked(ImGuiMouseButton_Left) ? iso3::increase(cell) : /*rclick*/ cell;
                     }
@@ -839,7 +842,7 @@ private:
         }
         if (ImGui::Button("Random")) {
             const auto& groups = isotropic::get().groups();
-            const codeT group_0 = groups[m_rand() % groups.size()][0];
+            const codeT group_0 = groups[get_rand()() % groups.size()][0];
             cells = iso3::decode(group_0);
             record.set(cells);
             to_locate = group_0;

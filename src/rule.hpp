@@ -161,7 +161,7 @@ namespace iso3 {
         codeT head_for(const codeT c) const { return m_groups[m_map[c]][0]; }
 
         static const isotropic& get() {
-            static isotropic iso{};
+            static const isotropic iso{};
             return iso;
         }
 
@@ -278,11 +278,10 @@ namespace iso3 {
     }
 
     inline void randomize_p(ruleT& rule, randT& rand, const double p, const isotropic& iso = isotropic::get()) {
-        const auto rand_cell = rand_cell_from(rand);
         const auto rand_p = rand_p_from(rand, p);
         for (const groupT group : iso.groups()) {
             if (rand_p()) {
-                rule.fill(group, rand_cell());
+                rule.fill(group, rand_cell_other_than(rule[group[0]], rand));
             }
         }
     }
