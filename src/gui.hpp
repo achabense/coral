@@ -266,10 +266,10 @@ public:
         constexpr int step_min = 1, step_max = max_step;
         constexpr int interval_min = 0, interval_max = 20;
         ImGui::SameLine();
-        imgui_SliderIntEx(ImGui::GetFontSize() * 10, "##Step", step, step_min, step_max, true, "Step:%d");
+        imgui_SliderIntEx(ImGui::GetFontSize() * 10, "##Step", step, step_min, step_max, true, "Step: %d");
         ImGui::SameLine();
         imgui_SliderIntEx(ImGui::GetFontSize() * 10, "##Interval", interval, interval_min, interval_max, true,
-                          "Interval:%d");
+                          "Interval: %d");
         {
             ImGui::PushID("##Step"); // Workaround for highlighting the step buttons.
             if (shortcut(ctrl_mode::no_ctrl, ImGuiKey_1, repeat_mode::repeat, ImGui::GetID("-"))) {
@@ -549,7 +549,7 @@ private:
         ImGui::SameLine();
         // TODO: the label is not accurate enough. (randomize_c() uses exact dist, while randomize_p() uses possibility.)
         imgui_SliderIntEx(ImGui::GetFontSize() * 10, "##Dist", m_dist, 0, 100, true,
-                          m_mode == rand_mode::c ? "Dist:%d" : "Dist:%d%%");
+                          m_mode == rand_mode::c ? "Dist: %d" : "Dist: %d%%");
 
         ImGui::Separator();
         m_settings.header();
@@ -781,8 +781,6 @@ private:
         ImGui::SameLine();
         const bool reset = imgui_DoubleClickButton("Reset"); // TODO: the name is misleading.
         ImGui::SameLine();
-        ImGui::Text("%d fps", (int)std::round(ImGui::GetIO().Framerate)); // TODO: move elsewhere.
-        ImGui::SameLine();
         ImGui::BeginDisabled(!m_rule.has_prev());
         const bool to_prev =
             ImGui::Button("<<") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_LeftArrow, repeat_mode::no_repeat);
@@ -794,6 +792,8 @@ private:
         ImGui::EndDisabled();
         ImGui::SameLine();
         m_settings.header();
+        ImGui::SameLine();
+        ImGui::Text("%d fps", (int)std::round(ImGui::GetIO().Framerate));
 
         if (reset) {
             assert(!to_rule);

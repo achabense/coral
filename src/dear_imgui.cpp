@@ -83,8 +83,11 @@ void imgui_SliderIntEx(float slider_width, const char* label, int& val, int min 
         ++val;
     }
     ImGui::PopItemFlag();
-    ImGui::SameLine(0, inner_spacing);
-    ImGui::TextUnformatted(label, ImGui::FindRenderedTextEnd(label, label_end));
-    val = std::clamp(val, min, max);
     ImGui::PopID();
+    const char* visible_end = ImGui::FindRenderedTextEnd(label, label_end);
+    if (label != visible_end) {
+        ImGui::SameLine(0, inner_spacing);
+        ImGui::TextUnformatted(label, visible_end);
+    }
+    val = std::clamp(val, min, max);
 }
