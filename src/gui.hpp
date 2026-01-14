@@ -231,15 +231,26 @@ inline bool no_active_and_window_hovered() {
 }
 
 // TODO: support pausing/restarting individual windows & applying s/d/f to group.
-struct preview_settings {
+class preview_settings : no_copy {
     bool restart = false;
     bool pause = false;
     int step = 1;
-    int interval = 0; // Frame based. TODO: -> time based?
+    int interval = 0; // Frame based. (0 ~ each frame.)
+    int counter = 0;  // 0 ~ tick.
+
+public:
+    friend class preview_group;
+
+    void restart_all() { restart = true; }
+    void begin() { counter = counter == 0 ? interval : counter - 1; }
+    void end() { restart = false; }
 
     // Using a multiple of lcm(2,3) to prevent trivial strobing. (For 3-state rules, both 2 and 3 can be strobing period.)
     static constexpr int max_step = 12;
-    bool tick() const { return interval == 0 || (ImGui::GetFrameCount() % (interval + 1)) == 0; }
+    bool tick() const { return counter == 0; }
+
+    // `counter` is not strictly necessary, but makes ticking more stable when `interval` changes.
+    // bool tick() const { return interval == 0 || (ImGui::GetFrameCount() % (interval + 1)) == 0; }
 
     void header() {
         auto shortcut = create_shortcut(no_active_and_window_hovered()); // Instead of focused.
@@ -287,6 +298,7 @@ class preview_group : no_copy {
     struct blobT {
         tile_with_texture tile{};
         bool active = false;
+        bool skip_tick = false;
     };
 
     std::unordered_map<int /*id*/, blobT> m_blobs{};
@@ -346,13 +358,14 @@ public:
         if (tile.empty() || m_settings.restart) {
             tile.assign(m_init);
             tile.run(rule, m_settings.step);
+            blob.skip_tick = true;
         } else if (op && (op == 'S' || op == 'D' || op == 'F')) {
             tile.run(rule, op == 'S' ? m_settings.step : op == 'D' ? 1 : /*'F'*/ m_settings.max_step);
-        } else {
-            const bool pause = m_settings.pause || (!ctrl && pressed);
-            if (!pause && m_settings.tick()) {
-                tile.run(rule, m_settings.step);
-            }
+            blob.skip_tick = true;
+        } else if (m_settings.pause || (!ctrl && pressed)) {
+            blob.skip_tick = true;
+        } else if (m_settings.tick() && !std::exchange(blob.skip_tick, false)) {
+            tile.run(rule, m_settings.step);
         }
 
         // TODO: the current ownership works, but is still risky...
@@ -464,6 +477,7 @@ public:
             header(rel);
             ImGui::Separator();
 
+            m_settings.begin();
             const int item_spacing = ImGui::GetStyle().ItemSpacing.x;
             constexpr int per_line = page_x;
             for (int i = 0; i < page_size; ++i) {
@@ -478,7 +492,7 @@ public:
                     m_preview.dummy();
                 }
             }
-            m_settings.restart = false;
+            m_settings.end();
         }
         ImGui::End();
     }
@@ -497,13 +511,13 @@ private:
         ImGui::SameLine();
         ImGui::BeginDisabled(m_pos == 0);
         if (ImGui::Button("<<") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_LeftArrow, repeat_mode::no_repeat)) {
-            m_settings.restart = true;
+            m_settings.restart_all();
             m_pos = std::max(0, m_pos - page_size);
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
         if (ImGui::Button(">>>") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_RightArrow, repeat_mode::no_repeat)) {
-            m_settings.restart = true;
+            m_settings.restart_all();
             const int page_end = m_pos + page_size;
             if (m_rules.empty() || m_rules.size() <= page_end) {
                 randT& rand = get_rand();
@@ -570,6 +584,7 @@ public:
             const ImVec2 child_size =
                 m_preview.image_size() * ImVec2(2, 2) + item_spacing + ImVec2(ImGui::GetStyle().ScrollbarSize, 0);
             if (ImGui::BeginChild("Rules", child_size) && !m_rules.empty()) {
+                m_settings.begin();
                 const int total = m_rules.size();
                 constexpr int per_line = 2;
                 for (int i = 0; i < total; ++i) {
@@ -580,7 +595,7 @@ public:
                     }
                     m_preview.image(m_rules[i], starting_id + i, m_settings, m_popup, m_message, &to_rule);
                 }
-                m_settings.restart = false;
+                m_settings.end();
             }
             ImGui::EndChild();
         }
@@ -602,7 +617,7 @@ private:
         if (imgui_DoubleClickButton("Paste") || shortcut(ctrl_mode::ctrl, ImGuiKey_V, repeat_mode::no_repeat)) {
             std::vector<ruleT> rules = extract_rules(ImGui::GetClipboardText());
             if (!rules.empty()) {
-                m_settings.restart = true;
+                m_settings.restart_all();
                 m_rules.swap(rules);
             } else {
                 m_message.set("No rules.");
@@ -661,6 +676,7 @@ public:
         // TODO: slightly wasteful. (Can reuse memory by making `record_for::get()` return non-const ref, but that's risky.)
         std::unique_ptr<ruleT> temp_rule(new ruleT{m_rule.get()});
         ruleT& rule = *temp_rule;
+        m_settings.begin();
 
         const int item_spacing = ImGui::GetStyle().ItemSpacing.x;
         int preview_index = 0;
@@ -746,7 +762,7 @@ public:
         }
         ImGui::EndChild();
 
-        m_settings.restart = false;
+        m_settings.end();
         assert(rule == m_rule.get());
 
         m_preview.end();
@@ -786,15 +802,15 @@ private:
         if (to_rule) {
             m_rule.set(*to_rule);
             to_rule.reset();
-            m_settings.restart = true;
+            m_settings.restart_all();
         }
         if (to_prev) {
             m_rule.to_prev();
-            m_settings.restart = true;
+            m_settings.restart_all();
         }
         if (to_next) {
             m_rule.to_next();
-            m_settings.restart = true;
+            m_settings.restart_all();
         }
     }
 
