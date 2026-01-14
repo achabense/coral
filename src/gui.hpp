@@ -225,6 +225,63 @@ inline bool no_active_and_window_focused() {
            ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows | ImGuiFocusedFlags_NoPopupHierarchy);
 }
 
+inline bool no_active_and_window_hovered() {
+    return !ImGui::IsAnyItemActive() &&
+           ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows | ImGuiHoveredFlags_NoPopupHierarchy);
+}
+
+// TODO: support pausing/restarting individual windows & applying s/d/f to group.
+struct preview_settings {
+    bool restart = false;
+    bool pause = false;
+    int step = 1;
+    int interval = 0; // Frame based. TODO: -> time based?
+
+    // Using a multiple of lcm(2,3) to prevent trivial strobing. (For 3-state rules, both 2 and 3 can be strobing period.)
+    static constexpr int max_step = 12;
+    bool tick() const { return interval == 0 || (ImGui::GetFrameCount() % (interval + 1)) == 0; }
+
+    void header() {
+        auto shortcut = create_shortcut(no_active_and_window_hovered()); // Instead of focused.
+
+        if (ImGui::Button("Restart") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_R, repeat_mode::no_repeat)) {
+            restart = true;
+        }
+        ImGui::SameLine();
+        ImGui::Checkbox("Pause", &pause);
+        if (shortcut(ctrl_mode::no_ctrl, ImGuiKey_Space, repeat_mode::no_repeat)) {
+            pause = !pause;
+        }
+        constexpr int step_min = 1, step_max = max_step;
+        constexpr int interval_min = 0, interval_max = 20;
+        ImGui::SameLine();
+        imgui_SliderIntEx(ImGui::GetFontSize() * 10, "##Step", step, step_min, step_max, true, "Step:%d");
+        ImGui::SameLine();
+        imgui_SliderIntEx(ImGui::GetFontSize() * 10, "##Interval", interval, interval_min, interval_max, true,
+                          "Interval:%d");
+        {
+            ImGui::PushID("##Step"); // Workaround for highlighting the step buttons.
+            if (shortcut(ctrl_mode::no_ctrl, ImGuiKey_1, repeat_mode::repeat, ImGui::GetID("-"))) {
+                --step;
+            }
+            if (shortcut(ctrl_mode::no_ctrl, ImGuiKey_2, repeat_mode::repeat, ImGui::GetID("+"))) {
+                ++step;
+            }
+            ImGui::PopID();
+            ImGui::PushID("##Interval");
+            if (shortcut(ctrl_mode::no_ctrl, ImGuiKey_3, repeat_mode::repeat, ImGui::GetID("-"))) {
+                --interval;
+            }
+            if (shortcut(ctrl_mode::no_ctrl, ImGuiKey_4, repeat_mode::repeat, ImGui::GetID("+"))) {
+                ++interval;
+            }
+            ImGui::PopID();
+            step = std::clamp(step, step_min, step_max);
+            interval = std::clamp(interval, interval_min, interval_max);
+        }
+    }
+};
+
 // TODO: support configurable init state.
 class preview_group : no_copy {
     struct blobT {
@@ -250,22 +307,6 @@ public:
         std::erase_if(m_blobs, [](auto& blob) { return !std::exchange(blob.second.active, false); });
     }
 
-    // !!TODO: fragile workaround for restarting sub-groups.
-    // (Should either be stack-like (push/pop) or controlled by speedT (should rename).)
-    bool restart_all = false;
-
-    struct speedT {
-        bool pause = false;
-        int step = 1;
-        int interval = 0; // Frame based. TODO: -> time based?
-
-        // Using a multiple of lcm(2,3) to prevent trivial strobing. (For 3-state rules, both 2 and 3 can be strobing period.)
-        static constexpr int max_step = 12;
-        bool tick() const { return interval == 0 || (ImGui::GetFrameCount() % (interval + 1)) == 0; }
-    };
-
-    ImVec2 image_size() const { return texture_size() + ImVec2{2, 2} /*border*/; }
-
     // TODO: uncertain about the design (condition & op).
     // ctrl + left-click -> select
     // ctrl + c -> copy
@@ -273,8 +314,8 @@ public:
     // right-click -> op menu (select/copy)
     // no-ctrl + s/d/f -> extra step
     // `id` must be unique per group & imgui's id stack (for unique `GetItemID()`).
-    void image(const ruleT& rule, const int id, const speedT& speed, shared_popup& m_popup, extra_message& m_message,
-               std::optional<ruleT>* to_rule = nullptr) {
+    void image(const ruleT& rule, const int id, const preview_settings& m_settings, shared_popup& m_popup,
+               extra_message& m_message, std::optional<ruleT>* to_rule = nullptr) {
         constexpr ImVec2 border = {1, 1};
         // TODO: is it possible to distinguish items with no id from the background (e.g. IsBgHovered())?
         // ImGui::Dummy(texture_size() + border * 2);
@@ -302,15 +343,15 @@ public:
         tile_with_texture& tile = blob.tile;
         // TODO: whether to run before displaying?
         // TODO: whether to always skip the init state?
-        if (tile.empty() || restart_all) {
+        if (tile.empty() || m_settings.restart) {
             tile.assign(m_init);
-            tile.run(rule, speed.step);
+            tile.run(rule, m_settings.step);
         } else if (op && (op == 'S' || op == 'D' || op == 'F')) {
-            tile.run(rule, op == 'S' ? speed.step : op == 'D' ? 1 : /*'F'*/ speed.max_step);
+            tile.run(rule, op == 'S' ? m_settings.step : op == 'D' ? 1 : /*'F'*/ m_settings.max_step);
         } else {
-            const bool pause = speed.pause || (!ctrl && pressed);
-            if (!pause && speed.tick()) {
-                tile.run(rule, speed.step);
+            const bool pause = m_settings.pause || (!ctrl && pressed);
+            if (!pause && m_settings.tick()) {
+                tile.run(rule, m_settings.step);
             }
         }
 
@@ -348,6 +389,8 @@ public:
             m_message.set("Copied.");
         }
     }
+
+    ImVec2 image_size() const { return texture_size() + ImVec2{2, 2} /*border*/; }
 
     void dummy() const {
         ImGui::Dummy(image_size());
@@ -391,7 +434,6 @@ private:
     }
 };
 
-// !!TODO: (& rule_loader) unable to restart this window with shortcuts. (Each window should have their own pause-state / shortcuts.)
 // TODO: support configurable page size.
 // TODO: support more generating modes.
 // TODO: support fixing target rule (e.g. fix to all-0 rule).
@@ -405,13 +447,12 @@ class rule_generator : no_copy {
     rand_mode m_mode = rand_mode::p;
     int m_dist = 10; // c ~ dist, p ~ dist / 100
 
-    bool restart = false;
+    preview_settings m_settings{};
 
 public:
     bool open = false;
     void display_if_open(const char* window_name, const ruleT& rel, preview_group& m_preview, const int starting_id,
-                         const preview_group::speedT& speed, shared_popup& m_popup, extra_message& m_message,
-                         std::optional<ruleT>& to_rule) {
+                         shared_popup& m_popup, extra_message& m_message, std::optional<ruleT>& to_rule) {
         if (!open) {
             return;
         }
@@ -423,7 +464,6 @@ public:
             header(rel);
             ImGui::Separator();
 
-            m_preview.restart_all = std::exchange(restart, false);
             const int item_spacing = ImGui::GetStyle().ItemSpacing.x;
             constexpr int per_line = page_x;
             for (int i = 0; i < page_size; ++i) {
@@ -433,12 +473,12 @@ public:
                     // ImGui::Separator();
                 }
                 if (m_pos + i < m_rules.size()) {
-                    m_preview.image(m_rules.at(m_pos + i), starting_id + i, speed, m_popup, m_message, &to_rule);
+                    m_preview.image(m_rules.at(m_pos + i), starting_id + i, m_settings, m_popup, m_message, &to_rule);
                 } else {
                     m_preview.dummy();
                 }
             }
-            m_preview.restart_all = false;
+            m_settings.restart = false;
         }
         ImGui::End();
     }
@@ -457,13 +497,13 @@ private:
         ImGui::SameLine();
         ImGui::BeginDisabled(m_pos == 0);
         if (ImGui::Button("<<") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_LeftArrow, repeat_mode::no_repeat)) {
-            restart = true;
+            m_settings.restart = true;
             m_pos = std::max(0, m_pos - page_size);
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
         if (ImGui::Button(">>>") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_RightArrow, repeat_mode::no_repeat)) {
-            restart = true;
+            m_settings.restart = true;
             const int page_end = m_pos + page_size;
             if (m_rules.empty() || m_rules.size() <= page_end) {
                 randT& rand = get_rand();
@@ -493,7 +533,12 @@ private:
             m_mode = rand_mode::c;
         }
         ImGui::SameLine();
-        imgui_SliderIntEx(ImGui::GetFontSize() * 10, "##Dist", m_dist, 0, 100, true);
+        // TODO: the label is not accurate enough. (randomize_c() uses exact dist, while randomize_p() uses possibility.)
+        imgui_SliderIntEx(ImGui::GetFontSize() * 10, "##Dist", m_dist, 0, 100, true,
+                          m_mode == rand_mode::c ? "Dist:%d" : "Dist:%d%%");
+
+        ImGui::Separator();
+        m_settings.header();
     }
 };
 
@@ -502,13 +547,12 @@ private:
 class rule_loader : no_copy {
     std::vector<ruleT> m_rules{};
 
-    bool restart = false;
+    preview_settings m_settings{};
 
 public:
     bool open = false;
     void display_if_open(const char* window_name, preview_group& m_preview, const int starting_id,
-                         const preview_group::speedT& speed, shared_popup& m_popup, extra_message& m_message,
-                         std::optional<ruleT>& to_rule) {
+                         shared_popup& m_popup, extra_message& m_message, std::optional<ruleT>& to_rule) {
         if (!open) {
             return;
         }
@@ -521,11 +565,11 @@ public:
             ImGui::Separator();
 
             // TODO: -> separate pages (instead of a single scrollable page)?
+            // TODO: relying on header size not exceeding the width here.
             const ImVec2 item_spacing = ImGui::GetStyle().ItemSpacing;
             const ImVec2 child_size =
                 m_preview.image_size() * ImVec2(2, 2) + item_spacing + ImVec2(ImGui::GetStyle().ScrollbarSize, 0);
             if (ImGui::BeginChild("Rules", child_size) && !m_rules.empty()) {
-                m_preview.restart_all = std::exchange(restart, false);
                 const int total = m_rules.size();
                 constexpr int per_line = 2;
                 for (int i = 0; i < total; ++i) {
@@ -534,9 +578,9 @@ public:
                     } else if (i != 0) {
                         // ImGui::Separator();
                     }
-                    m_preview.image(m_rules[i], starting_id + i, speed, m_popup, m_message, &to_rule);
+                    m_preview.image(m_rules[i], starting_id + i, m_settings, m_popup, m_message, &to_rule);
                 }
-                m_preview.restart_all = false;
+                m_settings.restart = false;
             }
             ImGui::EndChild();
         }
@@ -558,12 +602,15 @@ private:
         if (imgui_DoubleClickButton("Paste") || shortcut(ctrl_mode::ctrl, ImGuiKey_V, repeat_mode::no_repeat)) {
             std::vector<ruleT> rules = extract_rules(ImGui::GetClipboardText());
             if (!rules.empty()) {
-                restart = true;
+                m_settings.restart = true;
                 m_rules.swap(rules);
             } else {
                 m_message.set("No rules.");
             }
         }
+
+        ImGui::Separator();
+        m_settings.header();
     }
 
     static std::vector<ruleT> extract_rules(std::string_view str, int reserve = 8, int max = 100) {
@@ -582,17 +629,16 @@ private:
 // TODO: support adding to temp list.
 class main_data : no_copy {
     using isotropic = iso3::isotropic;
-
     record_for<ruleT> m_rule{20};
-    preview_group m_preview{};
+    preview_settings m_settings{};
+    std::optional<ruleT> to_rule = std::nullopt; // TODO: use ruleT + bool instead?
+
     rule_loader m_loader{};
     rule_generator m_generator{};
+
+    preview_group m_preview{};
     shared_popup m_popup{};
     extra_message m_message{};
-
-    preview_group::speedT speed{.pause = false, .step = 1, .interval = 0};
-    std::optional<ruleT> to_rule = std::nullopt; // TODO: use ruleT + bool instead?
-    bool restart = false;
 
     // Too large to be stack-allocated.
     main_data() = default;
@@ -609,18 +655,17 @@ public:
         m_preview.begin();
 
         // TODO: using fixed names for convenience (technically should be specified per object).
-        m_loader.display_if_open("Load", m_preview, 20000, speed, m_popup, m_message, to_rule);
-        m_generator.display_if_open("Generate", m_rule.get(), m_preview, 10000, speed, m_popup, m_message, to_rule);
+        m_loader.display_if_open("Load", m_preview, 20000, m_popup, m_message, to_rule);
+        m_generator.display_if_open("Generate", m_rule.get(), m_preview, 10000, m_popup, m_message, to_rule);
 
         // TODO: slightly wasteful. (Can reuse memory by making `record_for::get()` return non-const ref, but that's risky.)
         std::unique_ptr<ruleT> temp_rule(new ruleT{m_rule.get()});
         ruleT& rule = *temp_rule;
-        m_preview.restart_all = std::exchange(restart, false);
 
         const int item_spacing = ImGui::GetStyle().ItemSpacing.x;
         int preview_index = 0;
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + code_image_width() + item_spacing); // For alignment.
-        m_preview.image(rule, preview_index++, speed, m_popup, m_message, nullptr);
+        m_preview.image(rule, preview_index++, m_settings, m_popup, m_message, nullptr);
 
         ImGui::Separator();
 
@@ -686,7 +731,7 @@ public:
                 ImGui::BeginGroup();
                 for (int i = 0; i < cellT::states - 1; ++i) {
                     iso3::increase(rule, group);
-                    m_preview.image(rule, preview_index++, speed, m_popup, m_message, &to_rule);
+                    m_preview.image(rule, preview_index++, m_settings, m_popup, m_message, &to_rule);
                     if (ImGui::IsItemVisible()) {
                         const ImVec2 image_min = ImGui::GetItemRectMin();
                         const ImVec2 image_max = ImGui::GetItemRectMax();
@@ -701,7 +746,7 @@ public:
         }
         ImGui::EndChild();
 
-        m_preview.restart_all = false;
+        m_settings.restart = false;
         assert(rule == m_rule.get());
 
         m_preview.end();
@@ -732,41 +777,7 @@ private:
             ImGui::Button(">>") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_RightArrow, repeat_mode::no_repeat);
         ImGui::EndDisabled();
         ImGui::SameLine();
-        // TODO: support pausing/restarting individual windows.
-        if (ImGui::Button("Restart") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_R, repeat_mode::no_repeat)) {
-            restart = true;
-        }
-        ImGui::SameLine();
-        ImGui::Checkbox("Pause", &speed.pause);
-        if (shortcut(ctrl_mode::no_ctrl, ImGuiKey_Space, repeat_mode::no_repeat)) {
-            speed.pause = !speed.pause;
-        }
-        constexpr int step_min = 1, step_max = decltype(speed)::max_step;
-        constexpr int interval_min = 0, interval_max = 20;
-        ImGui::SameLine();
-        imgui_SliderIntEx(ImGui::GetFontSize() * 10, "Step", speed.step, step_min, step_max, true);
-        ImGui::SameLine();
-        imgui_SliderIntEx(ImGui::GetFontSize() * 10, "Interval", speed.interval, interval_min, interval_max, true);
-        {
-            ImGui::PushID("Step"); // Workaround to highlight the step buttons.
-            if (shortcut(ctrl_mode::no_ctrl, ImGuiKey_1, repeat_mode::repeat, ImGui::GetID("-"))) {
-                --speed.step;
-            }
-            if (shortcut(ctrl_mode::no_ctrl, ImGuiKey_2, repeat_mode::repeat, ImGui::GetID("+"))) {
-                ++speed.step;
-            }
-            ImGui::PopID();
-            ImGui::PushID("Interval");
-            if (shortcut(ctrl_mode::no_ctrl, ImGuiKey_3, repeat_mode::repeat, ImGui::GetID("-"))) {
-                --speed.interval;
-            }
-            if (shortcut(ctrl_mode::no_ctrl, ImGuiKey_4, repeat_mode::repeat, ImGui::GetID("+"))) {
-                ++speed.interval;
-            }
-            ImGui::PopID();
-            speed.step = std::clamp(speed.step, step_min, step_max);
-            speed.interval = std::clamp(speed.interval, interval_min, interval_max);
-        }
+        m_settings.header();
 
         if (reset) {
             assert(!to_rule);
@@ -775,15 +786,15 @@ private:
         if (to_rule) {
             m_rule.set(*to_rule);
             to_rule.reset();
-            restart = true;
+            m_settings.restart = true;
         }
         if (to_prev) {
             m_rule.to_prev();
-            restart = true;
+            m_settings.restart = true;
         }
         if (to_next) {
             m_rule.to_next();
-            restart = true;
+            m_settings.restart = true;
         }
     }
 

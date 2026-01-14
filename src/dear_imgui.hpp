@@ -33,7 +33,7 @@ extern bool imgui_DummyEx(ImVec2 size, const char* str_id, int extra_id);
 extern bool imgui_DoubleClickButton(const char* label, ImVec2 size = {});
 
 extern void imgui_SliderIntEx(float slider_width, const char* label, int& val, int min /*[*/, int max /*]*/,
-                              bool repeat);
+                              bool repeat, const char* format /*= "%d"*/);
 
 // Those defined in "imgui_internal.h" cannot be declared for use here (as they are inline functions).
 inline ImVec2 imgui_Floor(ImVec2 a) { return {std::floor(a.x), std::floor(a.y)}; }

@@ -63,7 +63,8 @@ bool imgui_DoubleClickButton(const char* label, ImVec2 size) {
     return ret;
 }
 
-void imgui_SliderIntEx(float slider_width, const char* label, int& val, int min /*[*/, int max /*]*/, bool repeat) {
+void imgui_SliderIntEx(float slider_width, const char* label, int& val, int min /*[*/, int max /*]*/, bool repeat,
+                       const char* format) {
     assert(min <= max);
     val = std::clamp(val, min, max);
     const float inner_spacing = ImGui::GetStyle().ItemInnerSpacing.x;
@@ -71,7 +72,7 @@ void imgui_SliderIntEx(float slider_width, const char* label, int& val, int min 
     const char* label_end = label + std::strlen(label);
     ImGui::PushID(label, label_end);
     ImGui::SetNextItemWidth(slider_width);
-    ImGui::SliderInt("##Slider", &val, min, max, "%d", ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput);
+    ImGui::SliderInt("##Slider", &val, min, max, format, ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput);
     ImGui::PushItemFlag(ImGuiItemFlags_ButtonRepeat, repeat);
     ImGui::SameLine(0, inner_spacing);
     if (ImGui::Button("-", {frame_height, frame_height})) {
