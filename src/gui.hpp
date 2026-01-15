@@ -106,7 +106,7 @@ public:
     }
 };
 
-// Note: SDL is unable to create texture with height = 9 * codeT::states (19683 when cellT::states = 3).
+// Note: SDL is unable to create texture with height == 9 * codeT::states (19683 when cellT::states == 3).
 template <bool add_rect>
 inline void render_code(const codeT code, const int scale, const ImVec2 min, ImDrawList& draw) {
     const auto env = iso3::decode(code);
@@ -542,7 +542,7 @@ private:
                 randT& rand = get_rand();
                 const int num = m_rules.size() < page_end ? page_end - m_rules.size() : page_size;
                 for (int i = 0; i < num; ++i) {
-                    // iso3::rand_rule(m_rules.emplace_back_ex(), m_rand, {64, 4, 1});
+                    // iso3::rand_rule(m_rules.emplace_back_ex(), rand, {64, 4, 1});
                     if (m_mode == rand_mode::c) {
                         iso3::randomize_c(m_rules.emplace_back_ex() = rel, rand, m_dist);
                     } else {
@@ -659,7 +659,6 @@ private:
     }
 };
 
-// TODO: support setting to game-of-life.
 // TODO: support adding to temp list.
 class main_data : no_copy {
     using isotropic = iso3::isotropic;
@@ -793,7 +792,11 @@ private:
         ImGui::SameLine();
         ImGui::Checkbox("Generate", &m_generator.open);
         ImGui::SameLine();
-        const bool reset = imgui_DoubleClickButton("Reset"); // TODO: the name is misleading.
+        const bool to_zero = imgui_DoubleClickButton("Zero");
+        ImGui::SameLine();
+        const bool to_identity = imgui_DoubleClickButton("Identity");
+        ImGui::SameLine();
+        const bool to_life = imgui_DoubleClickButton("Life");
         ImGui::SameLine();
         ImGui::BeginDisabled(!m_rule.has_prev());
         const bool to_prev =
@@ -809,9 +812,17 @@ private:
         ImGui::SameLine();
         ImGui::Text("%d fps", (int)std::round(ImGui::GetIO().Framerate));
 
-        if (reset) {
+        if (to_zero) {
             assert(!to_rule);
-            to_rule.emplace_ex().fill({});
+            iso3::to_zero(to_rule.emplace_ex());
+        }
+        if (to_identity) {
+            assert(!to_rule);
+            iso3::to_identity(to_rule.emplace_ex());
+        }
+        if (to_life) {
+            assert(!to_rule);
+            iso3::to_life(to_rule.emplace_ex());
         }
         if (to_rule) {
             m_rule.set(*to_rule);

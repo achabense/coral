@@ -205,6 +205,31 @@ namespace iso3 {
         }
     }
 
+    inline void to_zero(ruleT& rule) { rule.fill({}); }
+
+    inline void to_identity(ruleT& rule) {
+        for_each_code([&rule](const codeT c) { rule[c] = decode(c, 4); });
+    }
+
+    // TODO: support generating "clean" / random rules equivalent to gol / arbitrary isotropic 2-state rules?
+    // For an arbitrary 2-state rule (like gol), there are a huge number of 3-state rules equivalent to it.
+    // For example, by treating cellT(0) & (1) as "0" and (2) as "1", a 3-state rule is equivalent to a 2-state rule as long as it maps cells to either (0) or (1) for cases where "0" is expected (and (2) for cases where "1" is expected).
+    // (The same applies to other state mappings like cellT(0) ~ "0", (1) & (2) ~ "1".)
+
+    // This is more special as it emulates gol at two levels (cellT(2) ~ "living", but also emulates another level of gol in the "dead" area (cellT(0) ~ "truly dead")).
+    // (This is designed for cellT::states == 3 but also works when states == 2 (as `count_2` always == 0).)
+    inline void to_life(ruleT& rule, const isotropic& iso = isotropic::get()) {
+        for (const groupT group : iso.groups()) {
+            envT env = decode(group[0]);
+            const cellT s = std::exchange(env.data[4], cellT(0));
+            const int count_2 = std::ranges::count(env.data, 2);
+            const int count_12 = count_2 + std::ranges::count(env.data, 1);
+            rule.fill(group, count_2 == 3 || (count_2 == 2 && s == 2)     ? cellT(2)
+                             : count_12 == 3 || (count_12 == 2 && s != 0) ? cellT(1) // TODO: vs `s == 1`?
+                                                                          : cellT(0));
+        }
+    }
+
     // Note: sizeof(std::mt19937) = 5000 in MSVC (about twice the necessary size)...
     // Related: https://github.com/microsoft/STL/issues/5198
     using randT = std::mt19937;
@@ -614,7 +639,7 @@ namespace iso3 {
 
     inline void test_run(randT& rand) {
         std::unique_ptr<ruleT> identity(new ruleT{});
-        for_each_code([&identity = *identity](const codeT c) { identity[c] = decode(c, 4); });
+        to_identity(*identity);
 
         const tileT a = rand_tile({123, 123}, rand);
         tileT b = a;
