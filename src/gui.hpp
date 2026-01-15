@@ -157,12 +157,11 @@ public:
     bool empty() const { return m_size == 0; }
 
     // Not responsible for values (should be assigned by callers).
-    // void clear() { m_size = 0; }
-    void resize(int size) {
+    void resize_ex(int size) {
         assert(0 <= size && size <= m_capacity);
         m_size = std::clamp(size, 0, m_capacity);
     }
-    T& emplace_back() {
+    T& emplace_back_ex() {
         if (m_size < m_capacity) {
             ++m_size;
         } else if (++m_0 == m_capacity) { // Discard the oldest value.
@@ -180,7 +179,7 @@ class record_for : no_copy {
     int m_pos = 0; // Current position.
 
 public:
-    explicit record_for(int capacity) : m_data(capacity) { m_data.emplace_back(); }
+    explicit record_for(int capacity) : m_data(capacity) { m_data.emplace_back_ex(); }
 
     bool has_next() const { return m_pos < m_data.size() - 1; }
     bool has_prev() const { return m_pos > 0; }
@@ -191,10 +190,30 @@ public:
     void set(const T& val) {
         assert(0 <= m_pos && m_pos < m_data.size());
         if (m_data.at(m_pos) != val) {
-            m_data.resize(m_pos + 1); // Discard values after the current pos.
-            m_data.emplace_back() = val;
+            m_data.resize_ex(m_pos + 1); // Discard values after the current pos.
+            m_data.emplace_back_ex() = val;
             m_pos = m_data.size() - 1;
         }
+    }
+};
+
+// To replace std::optional<ruleT> (for stack allocation).
+class opt_rule : no_copy {
+    std::unique_ptr<ruleT> m_rule{new ruleT{}};
+    bool has_value = false;
+
+public:
+    explicit operator bool() const { return has_value; }
+    const ruleT& operator*() const {
+        assert(has_value);
+        return *m_rule;
+    }
+    void reset() { has_value = false; }
+
+    // Not responsible for the value.
+    ruleT& emplace_ex() {
+        has_value = true;
+        return *m_rule;
     }
 };
 
@@ -327,7 +346,7 @@ public:
     // no-ctrl + s/d/f -> extra step
     // `id` must be unique per group & imgui's id stack (for unique `GetItemID()`).
     void image(const ruleT& rule, const int id, const preview_settings& m_settings, shared_popup& m_popup,
-               extra_message& m_message, std::optional<ruleT>* to_rule = nullptr) {
+               extra_message& m_message, opt_rule* to_rule = nullptr) {
         constexpr ImVec2 border = {1, 1};
         // TODO: is it possible to distinguish items with no id from the background (e.g. IsBgHovered())?
         // ImGui::Dummy(texture_size() + border * 2);
@@ -394,7 +413,7 @@ public:
             select |= ImGui::IsItemActivated(); // Clicked.
         }
         if (select) {
-            *to_rule = rule;
+            to_rule->emplace_ex() = rule;
             m_message.set("Selected.");
         }
         if (copy) {
@@ -465,7 +484,7 @@ class rule_generator : no_copy {
 public:
     bool open = false;
     void display_if_open(const char* window_name, const ruleT& rel, preview_group& m_preview, const int starting_id,
-                         shared_popup& m_popup, extra_message& m_message, std::optional<ruleT>& to_rule) {
+                         shared_popup& m_popup, extra_message& m_message, opt_rule& to_rule) {
         if (!open) {
             return;
         }
@@ -504,7 +523,7 @@ private:
 
         ImGui::BeginDisabled(m_rules.empty());
         if (imgui_DoubleClickButton("Clear")) {
-            m_rules.resize(0); // Won't actually free up memory.
+            m_rules.resize_ex(0); // Won't actually free up memory.
             m_pos = 0;
         }
         ImGui::EndDisabled();
@@ -523,11 +542,11 @@ private:
                 randT& rand = get_rand();
                 const int num = m_rules.size() < page_end ? page_end - m_rules.size() : page_size;
                 for (int i = 0; i < num; ++i) {
-                    // iso3::rand_rule(m_rules.emplace_back(), m_rand, {64, 4, 1});
+                    // iso3::rand_rule(m_rules.emplace_back_ex(), m_rand, {64, 4, 1});
                     if (m_mode == rand_mode::c) {
-                        iso3::randomize_c(m_rules.emplace_back() = rel, rand, m_dist);
+                        iso3::randomize_c(m_rules.emplace_back_ex() = rel, rand, m_dist);
                     } else {
-                        iso3::randomize_p(m_rules.emplace_back() = rel, rand, m_dist / 100.0);
+                        iso3::randomize_p(m_rules.emplace_back_ex() = rel, rand, m_dist / 100.0);
                     }
                 }
                 assert(m_rules.size() >= page_size);
@@ -566,7 +585,7 @@ class rule_loader : no_copy {
 public:
     bool open = false;
     void display_if_open(const char* window_name, preview_group& m_preview, const int starting_id,
-                         shared_popup& m_popup, extra_message& m_message, std::optional<ruleT>& to_rule) {
+                         shared_popup& m_popup, extra_message& m_message, opt_rule& to_rule) {
         if (!open) {
             return;
         }
@@ -646,7 +665,7 @@ class main_data : no_copy {
     using isotropic = iso3::isotropic;
     record_for<ruleT> m_rule{20};
     preview_settings m_settings{};
-    std::optional<ruleT> to_rule = std::nullopt; // TODO: use ruleT + bool instead?
+    opt_rule to_rule{};
 
     rule_loader m_loader{};
     rule_generator m_generator{};
@@ -655,12 +674,7 @@ class main_data : no_copy {
     shared_popup m_popup{};
     extra_message m_message{};
 
-    // Too large to be stack-allocated.
-    main_data() = default;
-
 public:
-    static auto make_unique() { return std::unique_ptr<main_data>(new main_data{}); }
-
     void display() {
         header();
         ImGui::Separator();
@@ -797,7 +811,7 @@ private:
 
         if (reset) {
             assert(!to_rule);
-            to_rule.emplace();
+            to_rule.emplace_ex().fill({});
         }
         if (to_rule) {
             m_rule.set(*to_rule);
@@ -877,6 +891,8 @@ private:
         ImGui::EndGroup();
     }
 };
+
+static_assert(sizeof(main_data) < 1000); // Suitable to be stack-allocated.
 
 inline void frame_main(main_data& data) {
     // TODO: document scrolling behavior & support scrolling with up/down.

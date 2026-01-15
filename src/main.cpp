@@ -113,7 +113,7 @@ int main(int, char**) {
         };
     }
 
-    for (auto data = main_data::make_unique();;) {
+    for (main_data data{};;) {
         bool quit = false;
         SDL_Event event{};
         while (SDL_PollEvent(&event)) {
@@ -139,7 +139,7 @@ int main(int, char**) {
             ImGui::NewFrame();
         }
 
-        frame_main(*data);
+        frame_main(data);
 
         {
             const auto& io = ImGui::GetIO();
