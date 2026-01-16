@@ -575,12 +575,13 @@ private:
     }
 };
 
-// TODO: support loading from file.
 // TODO: support resizing the window.
 class rule_loader : no_copy {
     std::vector<ruleT> m_rules{};
-
     preview_settings m_settings{};
+
+    file_loader m_loader{};
+    bool reset_scroll = false;
 
 public:
     bool open = false;
@@ -596,6 +597,9 @@ public:
                              ImGuiWindowFlags_AlwaysAutoResize)) {
             header(m_message);
             ImGui::Separator();
+            if (std::exchange(reset_scroll, false)) {
+                ImGui::SetNextWindowScroll({0, 0});
+            }
 
             // TODO: -> separate pages (instead of a single scrollable page)?
             // TODO: relying on header size not exceeding the width here.
@@ -629,17 +633,23 @@ private:
         if (imgui_DoubleClickButton("Clear")) {
             m_rules.clear();
             m_rules.shrink_to_fit();
+            reset_scroll = true;
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
         // TODO: support multiple lists (instead of replacing the existing one).
         if (imgui_DoubleClickButton("Paste") || shortcut(ctrl_mode::ctrl, ImGuiKey_V, repeat_mode::no_repeat)) {
-            std::vector<ruleT> rules = extract_rules(ImGui::GetClipboardText());
-            if (!rules.empty()) {
-                m_settings.restart_all();
-                m_rules.swap(rules);
-            } else {
-                m_message.set("No rules.");
+            const char* str = ImGui::GetClipboardText(); // May be nullptr.
+            extract_rules(str ? str : "", m_message);
+        }
+        ImGui::SameLine();
+        if (imgui_DoubleClickButton("Open")) {
+            m_loader.open = true;
+        }
+        if (m_loader.open) /*micro optimization*/ {
+            std::string str{};
+            if (m_loader.display_if_open(str, 1024 * 1024)) {
+                extract_rules(str, m_message);
             }
         }
 
@@ -647,7 +657,7 @@ private:
         m_settings.header();
     }
 
-    static std::vector<ruleT> extract_rules(std::string_view str, int reserve = 8, int max = 100) {
+    void extract_rules(std::string_view str, extra_message& m_message, int reserve = 8, int max = 100) {
         std::vector<ruleT> rules{};
         rules.reserve(reserve);
         for (int i = 0; i < max; ++i) {
@@ -655,7 +665,14 @@ private:
                 break;
             }
         }
-        return rules;
+        if (!rules.empty()) {
+            m_settings.restart_all();
+            m_rules.swap(rules);
+            reset_scroll = true;
+            m_message.set((std::to_string(m_rules.size()) + " rule(s).").c_str()); // TODO: improve.
+        } else {
+            m_message.set("No rules.");
+        }
     }
 };
 

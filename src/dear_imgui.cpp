@@ -84,10 +84,33 @@ void imgui_SliderIntEx(float slider_width, const char* label, int& val, int min 
     }
     ImGui::PopItemFlag();
     ImGui::PopID();
-    const char* visible_end = ImGui::FindRenderedTextEnd(label, label_end);
-    if (label != visible_end) {
+    const char* display_end = ImGui::FindRenderedTextEnd(label, label_end);
+    if (label != display_end) {
         ImGui::SameLine(0, inner_spacing);
-        ImGui::TextUnformatted(label, visible_end);
+        ImGui::TextUnformatted(label, display_end);
     }
     val = std::clamp(val, min, max);
+}
+
+bool imgui_SelectableEx(const char* str_id, int extra_id, const char* label, bool selected,
+                        ImGuiSelectableFlags flags) {
+    assert(str_id[0] == '#' && str_id[1] == '#');
+    const ImVec2 pos =
+        GImGui->CurrentWindow->DC.CursorPos + ImVec2(0, GImGui->CurrentWindow->DC.CurrLineTextBaseOffset);
+
+    ImGui::PushID(extra_id);
+    const bool ret = ImGui::Selectable(str_id, selected, flags /*, {0, 0}*/);
+    ImGui::PopID();
+    if (ImGui::IsItemVisible()) {
+        // TODO: risky workaround to emulate normal label rendering.
+        const char* label_end = label + std::strlen(label); // Won't skip ##(#)...
+        const ImVec2 label_size = ImGui::CalcTextSize(label, label_end, false);
+        const ImRect bb = GImGui->LastItemData.Rect;
+        // const ImVec2 pos = bb.Min; // Wrong pos, see above.
+        const ImVec2 size = bb.GetSize();
+        ImGui::RenderTextClippedEx(GImGui->CurrentWindow->DrawList, pos,
+                                   ImVec2(ImMin(pos.x + size.x, GImGui->CurrentWindow->WorkRect.Max.x), pos.y + size.y),
+                                   label, label_end, &label_size, GImGui->Style.SelectableTextAlign, &bb);
+    }
+    return ret;
 }

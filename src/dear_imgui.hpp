@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -34,6 +35,11 @@ extern bool imgui_DoubleClickButton(const char* label, ImVec2 size = {});
 
 extern void imgui_SliderIntEx(float slider_width, const char* label, int& val, int min /*[*/, int max /*]*/,
                               bool repeat, const char* format /*= "%d"*/);
+
+// To decouple label from item-id (~ PushID(extra_id) / str_id).
+// `label` is rendered as plain text, i.e. won't skip "##...", "###..." etc.
+extern bool imgui_SelectableEx(const char* str_id, int extra_id, const char* label, bool selected = false,
+                               ImGuiSelectableFlags flags = 0 /*, ImVec2 size = {}*/);
 
 // Those defined in "imgui_internal.h" cannot be declared for use here (as they are inline functions).
 inline ImVec2 imgui_Floor(ImVec2 a) { return {std::floor(a.x), std::floor(a.y)}; }
@@ -139,4 +145,15 @@ public:
             }
         }
     }
+};
+
+class file_loader : no_copy {
+    std::shared_ptr<void> m_impl{}; // Unique ownership; just for simpler code.
+
+public:
+    bool open = false;
+
+    // Modal window.
+    // true ~ loaded successfully (`data` may become non-empty even if failed); doesn't care about utf8-boundary.
+    bool display_if_open(std::string& data, int max_size = 1024 * 1024);
 };
