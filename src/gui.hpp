@@ -650,7 +650,7 @@ private:
             extract_rules(str ? str : "", m_message);
         }
         ImGui::SameLine();
-        if (imgui_DoubleClickButton("Open")) {
+        if (imgui_DoubleClickButton("Open") || shortcut(ctrl_mode::ctrl, ImGuiKey_O, repeat_mode::no_repeat)) {
             m_loader.open = true;
         }
         if (m_loader.open) /*micro optimization*/ {
@@ -729,6 +729,7 @@ public:
         if (child) {
             // std::optional<codeT> to_locate = std::nullopt;
             int to_locate = -1;
+            // TODO: support ctrl+F?
             if (ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered() && !ImGui::IsAnyItemActive() &&
                 ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
                 m_popup.open(-100);
@@ -769,7 +770,8 @@ public:
                 const ImVec2 code_image_max = ImGui::GetItemRectMax();
                 render_cell(rule[group_0], {code_image_max.x - cell_width, code_image_max.y + cell_width});
                 if (to_locate == group_0) {
-                    ImGui::SetScrollHereY(0);
+                    // More accurate than `ImGui::SetScrollHereY(0)`.
+                    ImGui::SetScrollFromPosY(ImGui::GetItemRectMin().y - ImGui::GetWindowPos().y, 0);
                 }
                 if (ImGui::BeginItemTooltip()) {
                     for (bool first = true; const codeT c : group) {
