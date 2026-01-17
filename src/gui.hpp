@@ -181,10 +181,11 @@ class record_for : no_copy {
 public:
     explicit record_for(int capacity) : m_data(capacity) { m_data.emplace_back_ex(); }
 
-    bool has_next() const { return m_pos < m_data.size() - 1; }
     bool has_prev() const { return m_pos > 0; }
-    void to_next() { m_pos = std::min(m_pos + 1, m_data.size() - 1); }
+    bool has_next() const { return m_pos < m_data.size() - 1; }
     void to_prev() { m_pos = std::max(m_pos - 1, 0); }
+    void to_next() { m_pos = std::min(m_pos + 1, m_data.size() - 1); }
+    void to_last() { m_pos = m_data.size() - 1; }
 
     const T& get() { return m_data.at(m_pos); }
     void set(const T& val) {
@@ -555,7 +556,13 @@ private:
                 m_pos += page_size;
             }
         }
-        // TODO: add "|>".
+        ImGui::SameLine(); // TODO: should redesign (conditions/+-m_pos) when page-resizing is supported.
+        ImGui::BeginDisabled(m_rules.empty() || m_rules.size() <= m_pos + page_size);
+        if (ImGui::Button("|>")) {
+            m_settings.restart_all();
+            m_pos = m_rules.size() - page_size;
+        }
+        ImGui::EndDisabled();
         // !!TODO: should explain in UI...
         ImGui::SameLine();
         if (ImGui::RadioButton("P", m_mode == rand_mode::p)) {
@@ -861,22 +868,36 @@ private:
 
         // TODO: working but technically should belong to object.
         static_var iso3::envT cells{};
-        static_var record_for<iso3::envT> record{10}; // Only for "Locate" and "Random".
+        static_var record_for<codeT> record{10}; // Only for "Locate" and ">>>".
+        const auto sync_from_record = [&] {
+            cells = iso3::decode(record.get());
+            to_locate = record.get();
+        };
         {
             ImGui::BeginDisabled(!record.has_prev());
             if (ImGui::SmallButton("<<") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_LeftArrow, repeat_mode::no_repeat)) {
                 record.to_prev();
-                cells = record.get();
-                to_locate = iso3::encode(cells);
+                sync_from_record();
             }
             ImGui::EndDisabled();
             ImGui::SameLine();
-            // TODO: enhance to ">>>"?
+            if (ImGui::SmallButton(">>>") ||
+                shortcut(ctrl_mode::no_ctrl, ImGuiKey_RightArrow, repeat_mode::no_repeat)) {
+                if (record.has_next()) {
+                    record.to_next();
+                    sync_from_record();
+                } else {
+                    const auto& groups = isotropic::get().groups();
+                    const codeT group_0 = groups[get_rand()() % groups.size()][0];
+                    record.set(group_0);
+                    sync_from_record();
+                }
+            }
+            ImGui::SameLine();
             ImGui::BeginDisabled(!record.has_next());
-            if (ImGui::SmallButton(">>") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_RightArrow, repeat_mode::no_repeat)) {
-                record.to_next();
-                cells = record.get();
-                to_locate = iso3::encode(cells);
+            if (ImGui::SmallButton("|>")) {
+                record.to_last();
+                sync_from_record();
             }
             ImGui::EndDisabled();
 
@@ -902,21 +923,11 @@ private:
             }
         }
         ImGui::SameLine();
-        ImGui::BeginGroup();
         if (ImGui::Button("Locate")) {
             const codeT group_0 = isotropic::get().group_for(iso3::encode(cells))[0];
-            cells = iso3::decode(group_0);
-            record.set(cells);
-            to_locate = group_0;
+            record.set(group_0);
+            sync_from_record();
         }
-        if (ImGui::Button("Random")) {
-            const auto& groups = isotropic::get().groups();
-            const codeT group_0 = groups[get_rand()() % groups.size()][0];
-            cells = iso3::decode(group_0);
-            record.set(cells);
-            to_locate = group_0;
-        }
-        ImGui::EndGroup();
     }
 };
 
