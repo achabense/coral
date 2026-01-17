@@ -30,7 +30,7 @@ static bool load_file(const pathT& path, std::string& data, const int max_size) 
     }
 }
 
-// 1. interop with char-strings containing utf8 becomes broken in C++20 (have to make extra copies to get rid of deprecation & UB).
+// 1. interop with utf8-encoded char-strings becomes broken in C++20 (have to make extra copies to get rid of deprecation & UB).
 static pathT cpp17_u8path_maythrow(const std::string_view u8path) {
     const std::u8string yuck(u8path.data(), u8path.data() + u8path.size());
     return yuck;
@@ -38,13 +38,6 @@ static pathT cpp17_u8path_maythrow(const std::string_view u8path) {
 static std::string cpp17_u8string_maythrow(const pathT& path) {
     const std::u8string yuck = path.u8string();
     return {yuck.data(), yuck.data() + yuck.size()};
-}
-static std::string cpp17_u8string_nothrow(const pathT& path) noexcept {
-    try {
-        return cpp17_u8string_maythrow(path);
-    } catch (...) {
-        return "???"; // TODO: improve.
-    }
 }
 
 // 2.1. there is no way to extract filename efficiently for folder paths ending with separator.
@@ -64,9 +57,9 @@ struct entryT {
     bool is_file{}; // false ~ folder.
 };
 
-// TODO: add limit.
-static std::vector<entryT> collect_entries_maythrow(const pathT& path) {
+static std::vector<entryT> collect_entries_maythrow(const pathT& path, const int reserve = 40, int max = 1000) {
     std::vector<entryT> entries{};
+    entries.reserve(reserve);
     for (const auto& entry :
          std::filesystem::directory_iterator(path, std::filesystem::directory_options::skip_permission_denied)) {
         try {
@@ -76,6 +69,9 @@ static std::vector<entryT> collect_entries_maythrow(const pathT& path) {
                 pathT filename = get_filename_maythrow(entry.path(), is_file);
                 std::string str = cpp17_u8string_maythrow(filename);
                 entries.push_back({.filename = std::move(filename), .str = std::move(str), .is_file = is_file});
+            }
+            if (--max <= 0) { // TODO: set message?
+                break;
             }
         } catch (...) {
             continue;
@@ -88,6 +84,7 @@ static std::vector<entryT> collect_entries_maythrow(const pathT& path) {
 
 class folderT : no_copy {
     pathT m_path{}; // Canonical.
+    std::string m_str{};
     std::vector<entryT> m_entries{};
 
 public:
@@ -97,6 +94,7 @@ public:
         m_entries.clear();
     }
     const pathT& path() const noexcept { return m_path; }
+    const std::string& str() const noexcept { return m_str; }
     const std::vector<entryT>& entries() const noexcept { return m_entries; }
     pathT operator/(const entryT& entry) const noexcept /*terminates (supposed to be impossible)*/ {
         return m_path / entry.filename;
@@ -106,7 +104,9 @@ public:
     bool set_path(const pathT& path) noexcept {
         try {
             pathT canonical = std::filesystem::canonical(m_path / path);
+            std::string str = cpp17_u8string_maythrow(canonical);
             m_entries = collect_entries_maythrow(canonical);
+            m_str.swap(str);
             m_path.swap(canonical);
             return true;
         } catch (...) {
@@ -153,6 +153,7 @@ class file_loader_impl : no_copy {
     folderT m_current{};
 
     // (Can be shared from callers, but that's unnecessarily complex.)
+    // (Will disappear earlier if the window is closed immediately, but that's extremely rare.)
     extra_message m_message{};
     // shared_popup m_popup{}; // TODO: support popup (for copying path etc.).
 
@@ -164,8 +165,10 @@ public:
     file_loader_impl() {
         if (m_current.set_current_path()) {
             m_home = m_current.path();
+        } else {
+            // !!TODO: if failed, only input mode makes sense.
+            assert(false);
         }
-        // !!TODO: if failed, only input mode makes sense.
     }
 
     bool display(std::string& data, const int max_size) {
@@ -181,7 +184,7 @@ public:
 
         // Workaround for extra x-clip (for e.g. TextUnformatted and Selectable).
         // TODO: use ImDrawList::Push/PopPushClipRect instead?
-        ImGui::BeginChild("Limit");
+        ImGui::BeginChild("Clip");
 
         if (imgui_DoubleClickButton("Refresh")) {
             if (test_loaded(m_current.refresh(), reset_scroll)) {
@@ -195,8 +198,11 @@ public:
 
         ImGui::Separator();
 
-        // TODO: cache result.
-        ImGui::TextUnformatted(cpp17_u8string_nothrow(m_current.path()).c_str());
+        {
+            // ImGui::TextUnformatted(m_current.str().c_str());
+            const std::string_view str = m_current.str(); // Micro optimization.
+            ImGui::TextUnformatted(str.data(), str.data() + str.size());
+        }
 
         ImGui::Separator();
 
@@ -223,7 +229,9 @@ public:
                     continue;
                 }
                 if (!entry.is_file) {
-                    ImGui::TextUnformatted("|-");
+                    // ImGui::TextUnformatted("|-");
+                    constexpr const char* str = "|-"; // Micro optimization.
+                    ImGui::TextUnformatted(str, str + 2);
                     ImGui::SameLine();
                 }
                 if (imgui_SelectableEx(str_id, extra_id++, entry.str.c_str(), false,
@@ -253,7 +261,7 @@ public:
         }
 
         ImGui::EndChild();
-        m_message.display();
+        m_message.display_if_present();
         return file_loaded;
     }
 };

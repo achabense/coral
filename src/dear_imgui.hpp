@@ -118,7 +118,7 @@ public:
         str_size.reset();
     }
 
-    void display() {
+    void display_if_present() {
         if (!str.empty()) {
             const char* str_begin = str.data();
             const char* str_end = str_begin + str.size();

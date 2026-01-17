@@ -797,7 +797,7 @@ public:
 
         m_preview.end();
         m_popup.end();
-        m_message.display();
+        m_message.display_if_present();
     }
 
 private:
