@@ -155,7 +155,7 @@ class file_loader_impl : no_copy {
     // (Can be shared from callers, but that's unnecessarily complex.)
     // (Will disappear earlier if the window is closed immediately, but that's extremely rare.)
     extra_message m_message{};
-    // shared_popup m_popup{}; // TODO: support popup (for copying path etc.).
+    shared_popup m_popup{};
 
     char input_filter[40]{};
     char input_path[220]{};
@@ -181,7 +181,17 @@ public:
             }
             return loaded;
         };
+        const auto copy_path = [&](const pathT& path) {
+            try {
+                ImGui::SetClipboardText(cpp17_u8string_maythrow(path).c_str());
+                m_message.set("Copied.");
+            } catch (...) {
+                m_message.set("Cannot copy.");
+            }
+        };
 
+        m_popup.set_popup_id("Popup");
+        m_popup.begin();
         // Workaround for extra x-clip (for e.g. TextUnformatted and Selectable).
         // TODO: use ImDrawList::Push/PopPushClipRect instead?
         ImGui::BeginChild("Clip");
@@ -202,6 +212,20 @@ public:
             // ImGui::TextUnformatted(m_current.str().c_str());
             const std::string_view str = m_current.str(); // Micro optimization.
             ImGui::TextUnformatted(str.data(), str.data() + str.size());
+            if (ImGui::IsItemHovered() || m_popup.opened(-50)) {
+                const ImVec2 min = ImGui::GetItemRectMin();
+                const ImVec2 max = ImGui::GetItemRectMax();
+                ImGui::GetWindowDrawList()->AddLine(ImVec2(min.x, max.y), max, IM_COL32_WHITE);
+            }
+            if (!ImGui::IsAnyItemActive() && ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+                m_popup.open(-50);
+            }
+            if (m_popup.begin_popup(-50, true)) {
+                if (ImGui::Selectable("Copy path")) {
+                    copy_path(m_current.path()); // TODO: can copy `str` directly.
+                }
+                m_popup.end_popup();
+            }
         }
 
         ImGui::Separator();
@@ -234,9 +258,20 @@ public:
                     ImGui::TextUnformatted(str, str + 2);
                     ImGui::SameLine();
                 }
-                if (imgui_SelectableEx(str_id, extra_id++, entry.str.c_str(), false,
-                                       ImGuiSelectableFlags_NoAutoClosePopups)) {
+                const int id = extra_id++;
+                const int extra_flag = m_popup.opened(id) ? ImGuiSelectableFlags_Highlight : ImGuiSelectableFlags_None;
+                if (imgui_SelectableEx(str_id, id, entry.str.c_str(), false,
+                                       ImGuiSelectableFlags_NoAutoClosePopups | extra_flag)) {
                     sel = &entry;
+                }
+                if (!ImGui::IsAnyItemActive() && ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+                    m_popup.open(id);
+                }
+                if (m_popup.begin_popup(id, true)) {
+                    if (ImGui::Selectable("Copy path")) {
+                        copy_path(m_current / entry);
+                    }
+                    m_popup.end_popup();
                 }
             }
             if (sel) {
@@ -261,6 +296,7 @@ public:
         }
 
         ImGui::EndChild();
+        m_popup.end();
         m_message.display_if_present();
         return file_loaded;
     }

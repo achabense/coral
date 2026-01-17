@@ -405,8 +405,8 @@ public:
             m_popup.open(id);
         }
         if (m_popup.begin_popup(id, /*lock-scroll*/ true)) {
+            copy |= ImGui::Selectable("Copy rule");
             select |= can_select && ImGui::Selectable("Select");
-            copy |= ImGui::Selectable("Copy");
             m_popup.end_popup();
         }
         if (can_select && hovered && ctrl) {
