@@ -212,13 +212,14 @@ public:
             // ImGui::TextUnformatted(m_current.str().c_str());
             const std::string_view str = m_current.str(); // Micro optimization.
             ImGui::TextUnformatted(str.data(), str.data() + str.size());
-            if (ImGui::IsItemHovered() || m_popup.opened(-50)) {
+            const bool hovered = ImGui::IsItemHovered();
+            if (hovered || m_popup.opened(-50)) {
                 const ImVec2 min = ImGui::GetItemRectMin();
                 const ImVec2 max = ImGui::GetItemRectMax();
                 ImGui::GetWindowDrawList()->AddLine(ImVec2(min.x, max.y), max, IM_COL32_WHITE);
-            }
-            if (!ImGui::IsAnyItemActive() && ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
-                m_popup.open(-50);
+                if (hovered) {
+                    m_popup.open_on_idle_rclick(-50);
+                }
             }
             if (m_popup.begin_popup(-50, true)) {
                 if (ImGui::Selectable("Copy path")) {
@@ -264,8 +265,8 @@ public:
                                        ImGuiSelectableFlags_NoAutoClosePopups | extra_flag)) {
                     sel = &entry;
                 }
-                if (!ImGui::IsAnyItemActive() && ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
-                    m_popup.open(id);
+                if (ImGui::IsItemHovered()) {
+                    m_popup.open_on_idle_rclick(id);
                 }
                 if (m_popup.begin_popup(id, true)) {
                     if (ImGui::Selectable("Copy path")) {

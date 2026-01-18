@@ -88,6 +88,18 @@ public:
     bool opened() const { return owner_id.has_value(); }
     bool opened(int id) const { return owner_id == id; }
 
+    // Workaround to enable popup when an input field is active but not held.
+    // Must work in combination with some hover test & should not apply to input field itself.
+    // (Normally `!IsAnyitemActive()` is enough, but when an input field is accepting input (even if not held), it will also report active id, and it's strange to disable popup in this case. `IsItemHovered()` (for other items) and `IsWindowHovered()` will report false normally when the input field is actually held.)
+    void open_on_idle_rclick(int id) {
+        assert(popup_id != 0);
+        if (!owner_id && (!ImGui::IsAnyItemActive() || ImGui::GetIO().WantTextInput) &&
+            ImGui::IsMouseClicked(ImGuiMouseButton_Right) /*&& !ImGui::IsMouseDown(ImGuiMouseButton_Left)*/) {
+            ImGui::OpenPopup(popup_id, ImGuiPopupFlags_NoReopen);
+            owner_id = id;
+        }
+    }
+
     // Can be a single function to take callbacks, but it's likely more efficient to split to two functions.
     bool begin_popup(int id, bool lock_scroll) {
         if (owner_id == id && imgui_BeginPopupEx(popup_id, ImGuiWindowFlags_NoNav)) {

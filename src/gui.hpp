@@ -401,8 +401,8 @@ public:
 
         const bool can_select = to_rule;
         bool select = false, copy = op == 'C';
-        if (hovered && !ImGui::IsAnyItemActive() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-            m_popup.open(id);
+        if (hovered) {
+            m_popup.open_on_idle_rclick(id);
         }
         if (m_popup.begin_popup(id, /*lock-scroll*/ true)) {
             copy |= ImGui::Selectable("Copy rule");
@@ -676,7 +676,9 @@ private:
             m_settings.restart_all();
             m_rules.swap(rules);
             reset_scroll = true;
-            m_message.set((std::to_string(m_rules.size()) + " rule(s).").c_str()); // TODO: improve.
+            // TODO: slightly wasteful. (`extra_message` stores std::string internally.)
+            const int num = m_rules.size();
+            m_message.set(num == 1 ? "1 rule." : (std::to_string(num) + " rules.").c_str());
         } else {
             m_message.set("No rules.");
         }
@@ -730,9 +732,8 @@ public:
             // std::optional<codeT> to_locate = std::nullopt;
             int to_locate = -1;
             // TODO: support ctrl+F?
-            if (ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered() && !ImGui::IsAnyItemActive() &&
-                ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-                m_popup.open(-100);
+            if (ImGui::IsWindowHovered() /*child only*/ && !ImGui::IsAnyItemHovered() /*bg only*/) {
+                m_popup.open_on_idle_rclick(-100);
             }
             if (m_popup.opened(-100) /*micro optimization*/ &&
                 m_popup.begin_popup(-100, !ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem |
@@ -825,6 +826,7 @@ private:
         const bool to_life = imgui_DoubleClickButton("Life");
         ImGui::SameLine();
         ImGui::BeginDisabled(!m_rule.has_prev());
+        // TODO: also support ctrl+Z/Y? (Convenient for undoing ctrl+click selection.)
         const bool to_prev =
             ImGui::Button("<<") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_LeftArrow, repeat_mode::no_repeat);
         ImGui::EndDisabled();
@@ -832,6 +834,8 @@ private:
         ImGui::BeginDisabled(!m_rule.has_next());
         const bool to_next =
             ImGui::Button(">>") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_RightArrow, repeat_mode::no_repeat);
+        ImGui::SameLine();
+        const bool to_last = ImGui::Button("|>");
         ImGui::EndDisabled();
         ImGui::SameLine();
         m_settings.header();
@@ -861,6 +865,10 @@ private:
         }
         if (to_next) {
             m_rule.to_next();
+            m_settings.restart_all();
+        }
+        if (to_last) {
+            m_rule.to_last();
             m_settings.restart_all();
         }
     }
