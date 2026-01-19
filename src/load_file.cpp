@@ -4,7 +4,10 @@
 
 #include "dear_imgui.hpp"
 
-// std::filesystem::path involves a lot of nasty designs... See the "// n." comments below.
+// std::filesystem::path involves a lot of nasty designs...
+// Most horridly, it defines implicit conversions from(/to) char-strings (and assumes mysterious encoding).
+// So the related functions can easily introduce encoding bugs, and it's hard to track the calls.
+// (It's even unclear whether path("string-literal") is guaranteed to have correct encoding...)
 using pathT = std::filesystem::path;
 
 // (Jokingly, it's impossible to portably open utf8-encoded path using only standard C functions - `fopen` assumes mysterious encoding.)
@@ -30,9 +33,9 @@ static bool load_file(const pathT& path, std::string& data, const int max_size) 
     }
 }
 
-// 1. interop with utf8-encoded char-strings becomes broken in C++20 (have to make extra copies to get rid of deprecation & UB).
-static pathT cpp17_u8path_maythrow(const std::string_view u8path) {
-    const std::u8string yuck(u8path.data(), u8path.data() + u8path.size());
+// Interop with utf8-encoded char-strings becomes broken in C++20 (have to make extra copies to get rid of deprecation & UB).
+static pathT cpp17_u8path_maythrow(const std::string_view str) {
+    const std::u8string yuck(str.data(), str.data() + str.size());
     return yuck;
 }
 static std::string cpp17_u8string_maythrow(const pathT& path) {
@@ -40,7 +43,7 @@ static std::string cpp17_u8string_maythrow(const pathT& path) {
     return {yuck.data(), yuck.data() + yuck.size()};
 }
 
-// 2.1. there is no way to extract filename efficiently for folder paths ending with separator.
+// There is no way to extract filename efficiently for folder paths ending with separator.
 static pathT get_filename_maythrow(const pathT& path, const bool is_file) {
     assert(!path.empty()); // & not root path.
     const auto back = path.native().back();
@@ -65,7 +68,7 @@ static std::vector<entryT> collect_entries_maythrow(const pathT& path, const int
         try {
             const bool is_file = entry.is_regular_file();
             if (is_file || entry.is_directory()) {
-                // 2.2. and the standard doesn't say whether `directory_entry::path()` can end with separator, so have to consider the general case.
+                // The standard doesn't say whether `directory_entry::path()` can end with separator, so have to consider the general case.
                 pathT filename = get_filename_maythrow(entry.path(), is_file);
                 std::string str = cpp17_u8string_maythrow(filename);
                 entries.push_back({.filename = std::move(filename), .str = std::move(str), .is_file = is_file});
@@ -96,8 +99,8 @@ public:
     const pathT& path() const noexcept { return m_path; }
     const std::string& str() const noexcept { return m_str; }
     const std::vector<entryT>& entries() const noexcept { return m_entries; }
-    pathT operator/(const entryT& entry) const noexcept /*terminates (supposed to be impossible)*/ {
-        return m_path / entry.filename;
+    pathT operator/(const pathT& path) const noexcept /*terminates (supposed to be impossible)*/ {
+        return m_path / path;
     }
 
     // Relative to `m_path`.
@@ -113,17 +116,9 @@ public:
             return false;
         }
     }
-    // 3. horridly, path defines implicit conversions from/to char-strings (and assumes mysterious encoding).
     bool set_path(const char* str) noexcept {
         try {
             return set_path(cpp17_u8path_maythrow(str));
-        } catch (...) {
-            return false;
-        }
-    }
-    bool set_path(const entryT& entry) noexcept {
-        try {
-            return set_path(m_path / entry.filename);
         } catch (...) {
             return false;
         }
@@ -270,14 +265,14 @@ public:
                 }
                 if (m_popup.begin_popup(id, true)) {
                     if (ImGui::Selectable("Copy path")) {
-                        copy_path(m_current / entry);
+                        copy_path(m_current / entry.filename);
                     }
                     m_popup.end_popup();
                 }
             }
             if (sel) {
                 if (sel->is_file) {
-                    test_loaded(load_file(m_current / *sel, data, max_size), file_loaded);
+                    test_loaded(load_file(m_current / sel->filename, data, max_size), file_loaded);
                 } else {
                     test_loaded(m_current.set_path(sel->filename), reset_scroll);
                 }
