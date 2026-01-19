@@ -100,12 +100,14 @@ public:
     const std::string& str() const noexcept { return m_str; }
     const std::vector<entryT>& entries() const noexcept { return m_entries; }
     pathT operator/(const pathT& path) const noexcept /*terminates (supposed to be impossible)*/ {
+        assert(valid());
         return m_path / path;
     }
 
     enum class rel_mode { local /*m_path*/, fs /*filesystem::current_path()*/ };
 
     bool set_dir(const pathT& path, const rel_mode rel) noexcept {
+        assert(rel == rel_mode::fs || valid());
         try {
             pathT canonical = std::filesystem::canonical(rel == rel_mode::local ? m_path / path : path);
             std::string str = cpp17_u8string_maythrow(canonical);
@@ -125,9 +127,8 @@ public:
         }
     }
     bool refresh() noexcept {
-        if (!valid()) {
-            return false;
-        }
+        // return set_dir(".", rel_mode::local);
+        assert(valid());
         try {
             m_entries = collect_entries_maythrow(m_path);
             return true;
@@ -138,10 +139,12 @@ public:
 };
 
 using rel_mode = folderT::rel_mode;
-static constexpr const char* msg_failed = "Failed."; // TODO: refine for different cases.
+
+// TODO: refine for different cases & some error messages should appear longer.
+static constexpr const char* msg_failed = "Failed.";
 
 class file_selector : no_copy {
-    pathT m_home{};
+    pathT m_home{}; // Canonical.
     folderT m_current{};
 
     // (Can be shared from callers, but that's unnecessarily complex.)
@@ -167,7 +170,7 @@ public:
     bool valid() const { return m_current.valid(); }
 
     void display(extra_message& m_message, pathT& select_file) {
-        assert(valid());
+        assert(valid() && !m_home.empty());
         const auto on_set_dir = [&](const bool s) {
             if (s) {
                 reset_scroll = true;
@@ -176,9 +179,9 @@ public:
             }
             return s;
         };
-        const auto copy_path = [&](const pathT& path) {
+        const auto copy_path = [&](const pathT& path, const char* str = nullptr) {
             try {
-                ImGui::SetClipboardText(cpp17_u8string_maythrow(path).c_str());
+                ImGui::SetClipboardText(str ? str : cpp17_u8string_maythrow(path).c_str());
                 m_message.set("Copied.");
             } catch (...) {
                 m_message.set(msg_failed);
@@ -205,7 +208,7 @@ public:
 
         {
             // ImGui::TextUnformatted(m_current.str().c_str());
-            const std::string_view str = m_current.str(); // Micro optimization.
+            const auto& str = m_current.str(); // Micro optimization.
             ImGui::TextUnformatted(str.data(), str.data() + str.size());
             const bool hovered = ImGui::IsItemHovered();
             if (hovered || m_popup.opened(-50)) {
@@ -218,7 +221,7 @@ public:
             }
             if (m_popup.begin_popup(-50, true)) {
                 if (ImGui::Selectable("Copy path")) {
-                    copy_path(m_current.path()); // TODO: can copy `str` directly.
+                    copy_path(m_current.path(), str.c_str());
                 }
                 m_popup.end_popup();
             }
@@ -228,13 +231,18 @@ public:
 
         constexpr const char* str_id = "##Entry";
         int extra_id = 0;
+        // Are canonical paths guaranteed to be unique?
+        ImGui::BeginDisabled(m_current.path().native() == m_home.native());
         if (imgui_SelectableEx(str_id, extra_id++, "Home", false, ImGuiSelectableFlags_NoAutoClosePopups)) {
             on_set_dir(m_current.set_dir(m_home, rel_mode::fs));
         }
-        // TODO: whether to disable when at root path?
+        ImGui::EndDisabled();
+        // `has_parent_path()` will always return true here. See: https://stackoverflow.com/questions/58201083
+        ImGui::BeginDisabled(!m_current.path().has_relative_path() /*~ root path*/);
         if (imgui_SelectableEx(str_id, extra_id++, "..", false, ImGuiSelectableFlags_NoAutoClosePopups)) {
             on_set_dir(m_current.set_dir("..", rel_mode::local));
         }
+        ImGui::EndDisabled();
 
         ImGui::Separator();
 
@@ -282,12 +290,29 @@ public:
 
         ImGui::Separator();
 
-        // TODO: should also accept file path.
         ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemInnerSpacing.x -
                                 ImGui::CalcTextSize("Input").x);
-        if (ImGui::InputText("Input", input_path, std::size(input_path), ImGuiInputTextFlags_EnterReturnsTrue)) {
-            if (input_path[0] != '\0' && on_set_dir(m_current.set_dir(input_path, rel_mode::local))) {
-                input_path[0] = '\0';
+        if (ImGui::InputTextWithHint("Input", "Folder or file path", input_path, std::size(input_path),
+                                     ImGuiInputTextFlags_EnterReturnsTrue) &&
+            input_path[0] != '\0') {
+            try {
+                const pathT path = m_current / cpp17_u8path_maythrow(input_path);
+                const auto status = std::filesystem::status(path);
+                const bool is_file = std::filesystem::is_regular_file(status);
+                if (is_file || std::filesystem::is_directory(status)) {
+                    const pathT canonical = std::filesystem::canonical(path);
+                    if (is_file) {
+                        select_file = canonical;
+                    }
+                    if (on_set_dir(m_current.set_dir(is_file ? canonical.parent_path() : /*directory*/ canonical,
+                                                     rel_mode::fs))) {
+                        input_path[0] = '\0';
+                    }
+                } else {
+                    m_message.set(!std::filesystem::exists(status) ? "Path doesn't exist." : msg_failed);
+                }
+            } catch (...) {
+                m_message.set(msg_failed);
             }
         }
 
