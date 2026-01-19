@@ -655,7 +655,7 @@ private:
         }
         if (m_loader.open) /*micro optimization*/ {
             std::string str{};
-            if (m_loader.display_if_open(str, 1024 * 1024)) {
+            if (m_loader.display_if_open(m_message, str, 1024 * 1024)) {
                 extract_rules(str, m_message);
             }
         }

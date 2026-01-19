@@ -103,10 +103,11 @@ public:
         return m_path / path;
     }
 
-    // Relative to `m_path`.
-    bool set_path(const pathT& path) noexcept {
+    enum class rel_mode { local /*m_path*/, fs /*filesystem::current_path()*/ };
+
+    bool set_dir(const pathT& path, const rel_mode rel) noexcept {
         try {
-            pathT canonical = std::filesystem::canonical(m_path / path);
+            pathT canonical = std::filesystem::canonical(rel == rel_mode::local ? m_path / path : path);
             std::string str = cpp17_u8string_maythrow(canonical);
             m_entries = collect_entries_maythrow(canonical);
             m_str.swap(str);
@@ -116,16 +117,9 @@ public:
             return false;
         }
     }
-    bool set_path(const char* str) noexcept {
+    bool set_dir(const char* str, const rel_mode rel) noexcept {
         try {
-            return set_path(cpp17_u8path_maythrow(str));
-        } catch (...) {
-            return false;
-        }
-    }
-    bool set_current_path() noexcept {
-        try {
-            return set_path(std::filesystem::current_path());
+            return set_dir(cpp17_u8path_maythrow(str), rel);
         } catch (...) {
             return false;
         }
@@ -143,45 +137,51 @@ public:
     }
 };
 
-class file_loader_impl : no_copy {
+using rel_mode = folderT::rel_mode;
+static constexpr const char* msg_failed = "Failed."; // TODO: refine for different cases.
+
+class file_selector : no_copy {
     pathT m_home{};
     folderT m_current{};
 
     // (Can be shared from callers, but that's unnecessarily complex.)
-    // (Will disappear earlier if the window is closed immediately, but that's extremely rare.)
-    extra_message m_message{};
     shared_popup m_popup{};
+
+    // TODO: whether to define locally?
+    // (Will disappear earlier if the window is closed immediately, but that's extremely rare.)
+    // extra_message m_message{};
 
     char input_filter[40]{};
     char input_path[220]{};
     bool reset_scroll = false;
 
 public:
-    file_loader_impl() {
-        if (m_current.set_current_path()) {
+    file_selector() {
+        if (m_current.set_dir(".", rel_mode::fs)) {
             m_home = m_current.path();
         } else {
-            // !!TODO: if failed, only input mode makes sense.
-            assert(false);
+            assert(!valid()); // TODO: input mode may still make sense in this case.
         }
     }
 
-    bool display(std::string& data, const int max_size) {
-        bool file_loaded = false;
-        const auto test_loaded = [&](const bool loaded, bool& set_true) {
-            if (loaded) {
-                set_true = true;
+    bool valid() const { return m_current.valid(); }
+
+    void display(extra_message& m_message, pathT& select_file) {
+        assert(valid());
+        const auto on_set_dir = [&](const bool s) {
+            if (s) {
+                reset_scroll = true;
             } else {
-                m_message.set("Cannot open.");
+                m_message.set(msg_failed);
             }
-            return loaded;
+            return s;
         };
         const auto copy_path = [&](const pathT& path) {
             try {
                 ImGui::SetClipboardText(cpp17_u8string_maythrow(path).c_str());
                 m_message.set("Copied.");
             } catch (...) {
-                m_message.set("Cannot copy.");
+                m_message.set(msg_failed);
             }
         };
 
@@ -192,7 +192,7 @@ public:
         ImGui::BeginChild("Clip");
 
         if (imgui_DoubleClickButton("Refresh")) {
-            if (test_loaded(m_current.refresh(), reset_scroll)) {
+            if (on_set_dir(m_current.refresh())) {
                 m_message.set("Refreshed.");
             }
         }
@@ -229,11 +229,11 @@ public:
         constexpr const char* str_id = "##Entry";
         int extra_id = 0;
         if (imgui_SelectableEx(str_id, extra_id++, "Home", false, ImGuiSelectableFlags_NoAutoClosePopups)) {
-            test_loaded(m_current.set_path(m_home), reset_scroll);
+            on_set_dir(m_current.set_dir(m_home, rel_mode::fs));
         }
         // TODO: whether to disable when at root path?
         if (imgui_SelectableEx(str_id, extra_id++, "..", false, ImGuiSelectableFlags_NoAutoClosePopups)) {
-            test_loaded(m_current.set_path(".."), reset_scroll);
+            on_set_dir(m_current.set_dir("..", rel_mode::local));
         }
 
         ImGui::Separator();
@@ -272,9 +272,9 @@ public:
             }
             if (sel) {
                 if (sel->is_file) {
-                    test_loaded(load_file(m_current / sel->filename, data, max_size), file_loaded);
+                    select_file = m_current / sel->filename;
                 } else {
-                    test_loaded(m_current.set_path(sel->filename), reset_scroll);
+                    on_set_dir(m_current.set_dir(sel->filename, rel_mode::local));
                 }
             }
         }
@@ -286,25 +286,32 @@ public:
         ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemInnerSpacing.x -
                                 ImGui::CalcTextSize("Input").x);
         if (ImGui::InputText("Input", input_path, std::size(input_path), ImGuiInputTextFlags_EnterReturnsTrue)) {
-            if (input_path[0] != '\0' && test_loaded(m_current.set_path(input_path), reset_scroll)) {
+            if (input_path[0] != '\0' && on_set_dir(m_current.set_dir(input_path, rel_mode::local))) {
                 input_path[0] = '\0';
             }
         }
 
         ImGui::EndChild();
         m_popup.end();
-        m_message.display_if_present();
-        return file_loaded;
     }
 };
 
-bool file_loader::display_if_open(std::string& data, const int max_size) {
+bool file_loader::display_if_open(extra_message& m_message, std::string& data, const int max_size) {
     if (!open) {
         return false;
     }
     if (!m_impl) {
-        m_impl.reset(new file_loader_impl{});
+        m_impl.reset(new file_selector{});
     }
+    file_selector& selector = *reinterpret_cast<file_selector*>(m_impl.get());
+    if (!selector.valid()) {
+        // TODO: improve behavior (disable the open button afterwards, or support input-only mode.)
+        open = false;
+        m_message.set(msg_failed);
+        return false;
+    }
+    bool loaded = false;
+
     // Note: str-id is sensitive to the id stack, but ok for the current use.
     constexpr const char* window_name = "Select file";
     if (!ImGui::IsPopupOpen(window_name)) {
@@ -314,9 +321,16 @@ bool file_loader::display_if_open(std::string& data, const int max_size) {
     if (ImGui::BeginPopupModal(window_name, &open,
                                ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoResize)) {
         // Modal window also disables scrolling.
-        const bool loaded = reinterpret_cast<file_loader_impl*>(m_impl.get())->display(data, max_size);
+        pathT select{};
+        selector.display(m_message, select);
+        if (!select.empty()) {
+            if (load_file(select, data, max_size)) {
+                loaded = true;
+            } else {
+                m_message.set(msg_failed);
+            }
+        }
         ImGui::EndPopup();
-        return loaded;
     }
-    return false;
+    return loaded;
 }

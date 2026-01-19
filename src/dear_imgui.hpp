@@ -167,5 +167,7 @@ public:
 
     // Modal window.
     // true ~ loaded successfully (`data` may become non-empty even if failed); doesn't care about utf8-boundary.
-    bool display_if_open(std::string& data, int max_size = 1024 * 1024);
+    // (Callers should only deal with successful case.)
+    // TODO: the current msg handling works but is somewhat messy.
+    bool display_if_open(extra_message& m_message, std::string& data, int max_size = 1024 * 1024);
 };
