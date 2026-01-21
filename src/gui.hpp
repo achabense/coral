@@ -226,19 +226,23 @@ inline bool test_key(ctrl_mode ctrl, ImGuiKey key, repeat_mode repeat) {
                                         : ImGui::IsKeyPressed(key, repeat == repeat_mode::repeat));
 }
 
-// TODO: improve; -> class?
-inline auto create_shortcut(bool enabled) {
-    return [enabled](ctrl_mode ctrl, ImGuiKey key, repeat_mode repeat, ImGuiID highlight = ImGui::GetItemID()) mutable {
-        if (enabled && test_key(ctrl, key, repeat) && !imgui_IsItemDisabled()) {
-            enabled = false; // Only one key can be triggered.
+// TODO: key filtering is under-specified. (Implicitly filtered per object, but ideally should be globally filtered.)
+class shortcut_group : no_copy {
+    bool m_enabled{};
+
+public:
+    explicit shortcut_group(bool enabled) : m_enabled(enabled) {}
+    bool operator()(ctrl_mode ctrl, ImGuiKey key, repeat_mode repeat, ImGuiID highlight = ImGui::GetItemID()) {
+        if (m_enabled && test_key(ctrl, key, repeat) && !imgui_IsItemDisabled()) {
+            m_enabled = false; // Only one key can be triggered.
             if (highlight) {
                 imgui_HighlightItem(highlight);
             }
             return true;
         }
         return false;
-    };
-}
+    }
+};
 
 inline bool no_active_and_window_focused() {
     return !ImGui::IsAnyItemActive() &&
@@ -273,7 +277,7 @@ public:
     // bool tick() const { return interval == 0 || (ImGui::GetFrameCount() % (interval + 1)) == 0; }
 
     void header() {
-        auto shortcut = create_shortcut(no_active_and_window_hovered()); // Instead of focused.
+        shortcut_group shortcut{no_active_and_window_hovered()}; // Instead of focused.
 
         if (ImGui::Button("Restart") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_R, repeat_mode::no_repeat)) {
             restart = true;
@@ -520,7 +524,7 @@ public:
 private:
     void header(const ruleT& rel) {
         assert(m_rules.empty() ? m_pos == 0 : 0 <= m_pos && m_pos < m_rules.size());
-        auto shortcut = create_shortcut(no_active_and_window_focused());
+        shortcut_group shortcut{no_active_and_window_focused()};
 
         ImGui::BeginDisabled(m_rules.empty());
         if (imgui_DoubleClickButton("Clear")) {
@@ -626,6 +630,8 @@ public:
                     m_preview.image(m_rules[i], starting_id + i, m_settings, m_popup, m_message, &to_rule);
                 }
                 m_settings.end();
+
+                imgui_SetScrollWithUpDown(m_preview.image_size().y + item_spacing.y);
             }
             ImGui::EndChild();
         }
@@ -634,7 +640,7 @@ public:
 
 private:
     void header(extra_message& m_message) {
-        auto shortcut = create_shortcut(no_active_and_window_focused());
+        shortcut_group shortcut{no_active_and_window_focused()};
 
         ImGui::BeginDisabled(m_rules.empty());
         if (imgui_DoubleClickButton("Clear")) {
@@ -799,6 +805,8 @@ public:
                 ImGui::EndGroup();
                 iso3::increase(rule, group); // Restored.
             }
+
+            imgui_SetScrollWithUpDown(m_preview.image_size().y * 2 + ImGui::GetStyle().ItemSpacing.y * 3);
         }
         ImGui::EndChild();
 
@@ -812,7 +820,7 @@ public:
 
 private:
     void header() {
-        auto shortcut = create_shortcut(no_active_and_window_focused());
+        shortcut_group shortcut{no_active_and_window_focused()};
 
         ImGui::Checkbox("Load", &m_loader.open);
         ImGui::SameLine();
@@ -876,7 +884,7 @@ private:
     }
 
     static void select_group(int& to_locate) {
-        auto shortcut = create_shortcut(no_active_and_window_focused());
+        shortcut_group shortcut{no_active_and_window_focused()};
 
         // TODO: working but technically should belong to object.
         static_var iso3::envT cells{};
@@ -947,7 +955,6 @@ private:
 static_assert(sizeof(main_data) < 1000); // Suitable to be stack-allocated.
 
 inline void frame_main(main_data& data) {
-    // TODO: document scrolling behavior & support scrolling with up/down.
     // (Drag from scrollbar or press ctrl to scroll to position; otherwise will scroll by page size.)
     // Related: https://github.com/ocornut/imgui/issues/8002
     ImGui::GetIO().ConfigScrollbarScrollByPage = !ImGui::GetIO().KeyCtrl;

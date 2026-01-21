@@ -41,6 +41,38 @@ bool imgui_BeginPopupEx(ImGuiID id, ImGuiWindowFlags flags) {
 
 void imgui_LockScroll() { ImGui::SetKeyOwner(ImGuiKey_MouseWheelY, ImGuiKeyOwner_Any, ImGuiInputFlags_LockThisFrame); }
 
+// TODO: not reusing `shortcut_group` in "gui.hpp", and not taking part in filtering.
+// (See the comments below; may be able to replace `shortcut_group` with a function in the future.)
+void imgui_SetScrollWithUpDown(int dy) {
+    // To respect `imgui_LockScroll()`.
+    if (!ImGui::TestKeyOwner(ImGuiKey_MouseWheelY, ImGuiKeyOwner_NoOwner)) {
+        return;
+    }
+    // <-> `no_active_and_window_focused()`.
+    if (!(!ImGui::IsAnyItemActive() &&
+          ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows | ImGuiFocusedFlags_NoPopupHierarchy))) {
+        return;
+    }
+
+    std::optional<float> scroll_y = std::nullopt;
+    const bool ctrl = ImGui::GetIO().KeyCtrl;
+    if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, !ctrl /*-> repeat*/)) {
+        scroll_y = !ctrl ? ImGui::GetScrollY() - dy : 0;
+    } else if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, !ctrl)) {
+        scroll_y = !ctrl ? ImGui::GetScrollY() + dy : ImGui::GetScrollMaxY();
+    }
+    if (scroll_y) {
+        ImGui::SetScrollY(*scroll_y);
+        imgui_LockScroll();
+        const ImGuiID scrollbar_id = ImGui::GetWindowScrollbarID(GImGui->CurrentWindow, ImGuiAxis_Y);
+        ImGui::NavHighlightActivated(scrollbar_id);
+        // TODO: this may be able to fix both filtering and interaction with popup/locking, but will block IsItemHovered() for one frame.
+        // Related: https://github.com/ocornut/imgui/issues/9138 (fixed but need to wait for release).
+        // ImGui::SetActiveID(scrollbar_id, GImGui->CurrentWindow); // Will last for only one frame.
+        // GImGui->ActiveIdFromShortcut = scrollbar_id;
+    }
+}
+
 bool imgui_DummyEx(ImVec2 size, const char* str_id, int extra_id) {
     const bool visible = ImGui::IsRectVisible(size);
     if (!visible) {

@@ -285,6 +285,9 @@ public:
                     on_set_dir(m_current.set_dir(sel->filename, rel_mode::local));
                 }
             }
+
+            // TODO: slightly fragile. (Selectable() height is somewhat of an impl detail.)
+            imgui_SetScrollWithUpDown(ImGui::GetTextLineHeightWithSpacing() * 3);
         }
         ImGui::EndChild();
 

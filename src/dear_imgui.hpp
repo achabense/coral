@@ -27,6 +27,10 @@ extern bool imgui_BeginPopupEx(ImGuiID id, ImGuiWindowFlags flags = 0);
 // Will also disable scrolling in the current window.
 extern void imgui_LockScroll();
 
+// There can be at most one call in each window, and (workaround) should be called after items that may show popup / lock scroll.
+// Without ctrl: -/+ dy; with ctrl: to 0/max.
+extern void imgui_SetScrollWithUpDown(int dy);
+
 // Behaves like `InVisibleButton()` if visible, otherwise `Dummy()`. Returns `IsItemVisible()`.
 // (Unlike `InVisibleButton()`, this will not preserve active id if the item is scrolled outside of visible area.)
 extern bool imgui_DummyEx(ImVec2 size, const char* str_id, int extra_id);
