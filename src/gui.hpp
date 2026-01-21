@@ -339,7 +339,7 @@ public:
         std::erase_if(m_blobs, [](auto& blob) { return !std::exchange(blob.second.active, false); });
     }
 
-    // TODO: uncertain about the design (condition & op).
+    // (Shortcuts work when hovered && this-or-none-active.)
     // ctrl + left-click -> select
     // ctrl + c -> copy
     // ctrl/press + scroll -> change zoom level
@@ -388,8 +388,8 @@ public:
             tile.run(rule, m_settings.step);
         }
 
-        // TODO: the current ownership works, but is still risky...
-        // `tile` must not be cleared / resized after this (in this frame).
+        // TODO: relying on `tile` not be cleared / resized after AddImage() in this frame. Somewhat risky.
+        // (The texture is not actually uniquely owned by tile - it's also implicitly owned by imgui for one frame after rendered.)
         const ImTextureID texture = tile.texture();
         draw.AddImage(texture, min + border, max - border);
         if (hovered && ImGui::IsMousePosValid() && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
@@ -405,8 +405,8 @@ public:
             m_popup.open_on_idle_rclick(id);
         }
         if (m_popup.begin_popup(id, /*lock-scroll*/ true)) {
-            copy |= ImGui::Selectable("Copy rule");
             select |= can_select && ImGui::Selectable("Select");
+            copy |= ImGui::Selectable("Copy");
             m_popup.end_popup();
         }
         if (can_select && hovered && ctrl) {
@@ -558,7 +558,7 @@ private:
         }
         ImGui::SameLine(); // TODO: should redesign (conditions/+-m_pos) when page-resizing is supported.
         ImGui::BeginDisabled(m_rules.empty() || m_rules.size() <= m_pos + page_size);
-        if (ImGui::Button("|>")) {
+        if (ImGui::Button("|>") || shortcut(ctrl_mode::ctrl, ImGuiKey_RightArrow, repeat_mode::no_repeat)) {
             m_settings.restart_all();
             m_pos = m_rules.size() - page_size;
         }
@@ -812,7 +812,6 @@ public:
 
 private:
     void header() {
-        // TODO: uncertain about the design (condition & op).
         auto shortcut = create_shortcut(no_active_and_window_focused());
 
         ImGui::Checkbox("Load", &m_loader.open);
@@ -826,16 +825,19 @@ private:
         const bool to_life = imgui_DoubleClickButton("Life");
         ImGui::SameLine();
         ImGui::BeginDisabled(!m_rule.has_prev());
-        // TODO: also support ctrl+Z/Y? (Convenient for undoing ctrl+click selection.)
-        const bool to_prev =
-            ImGui::Button("<<") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_LeftArrow, repeat_mode::no_repeat);
+        // (Left/right as regular shortcuts for <</>>, ctrl+Z/Y as a convenient way to undo/redo ctrl+click selection.)
+        const bool to_prev = ImGui::Button("<<") ||
+                             shortcut(ctrl_mode::no_ctrl, ImGuiKey_LeftArrow, repeat_mode::no_repeat) ||
+                             shortcut(ctrl_mode::ctrl, ImGuiKey_Z, repeat_mode::no_repeat);
         ImGui::EndDisabled();
         ImGui::SameLine();
         ImGui::BeginDisabled(!m_rule.has_next());
-        const bool to_next =
-            ImGui::Button(">>") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_RightArrow, repeat_mode::no_repeat);
+        const bool to_next = ImGui::Button(">>") ||
+                             shortcut(ctrl_mode::no_ctrl, ImGuiKey_RightArrow, repeat_mode::no_repeat) ||
+                             shortcut(ctrl_mode::ctrl, ImGuiKey_Y, repeat_mode::no_repeat);
         ImGui::SameLine();
-        const bool to_last = ImGui::Button("|>");
+        const bool to_last =
+            ImGui::Button("|>") || shortcut(ctrl_mode::ctrl, ImGuiKey_RightArrow, repeat_mode::no_repeat);
         ImGui::EndDisabled();
         ImGui::SameLine();
         m_settings.header();
@@ -905,7 +907,7 @@ private:
             }
             ImGui::SameLine();
             ImGui::BeginDisabled(!record.has_next());
-            if (ImGui::SmallButton("|>")) {
+            if (ImGui::SmallButton("|>") || shortcut(ctrl_mode::ctrl, ImGuiKey_RightArrow, repeat_mode::no_repeat)) {
                 record.to_last();
                 sync_from_record();
             }
@@ -928,6 +930,7 @@ private:
                     if (ImGui::IsItemActivated()) {
                         v = ImGui::IsMouseClicked(ImGuiMouseButton_Left) ? iso3::increase(cell) : /*rclick*/ cell;
                     }
+                    // TODO: support undoing cell values as well (with a separate record & ctrl+Z/Y)?
                     cell = v;
                 }
             }
