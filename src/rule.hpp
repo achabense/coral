@@ -312,9 +312,9 @@ namespace iso3 {
     }
 
     // Note: ranges::shuffle doesn't work with vector<bool> (though std::shuffle does).
-    inline void randomize_c(ruleT& rule, randT& rand, const int c, const isotropic& iso = isotropic::get()) {
+    inline void randomize_n(ruleT& rule, randT& rand, const int n, const isotropic& iso = isotropic::get()) {
         std::vector<char> chosen(isotropic::k, false);
-        std::ranges::fill_n(chosen.data(), std::clamp(c, 0, isotropic::k), true);
+        std::ranges::fill_n(chosen.data(), std::clamp(n, 0, isotropic::k), true);
         std::ranges::shuffle(chosen, rand);
         for (int i = 0; const groupT group : iso.groups()) {
             if (chosen[i++]) {

@@ -378,10 +378,9 @@ public:
         blob.active = true;
         tile_with_texture& tile = blob.tile;
         // TODO: whether to run before displaying?
-        // TODO: whether to always skip the init state?
         if (tile.empty() || m_settings.restart) {
             tile.assign(m_init);
-            tile.run(rule, m_settings.step);
+            tile.run(rule, m_settings.step); // TODO: support setting init step?
             blob.skip_tick = true;
         } else if (op && (op == 'S' || op == 'D' || op == 'F')) {
             tile.run(rule, op == 'S' ? m_settings.step : op == 'D' ? 1 : /*'F'*/ m_settings.max_step);
@@ -480,9 +479,9 @@ class rule_generator : no_copy {
     ring_buffer<ruleT> m_rules{page_size * 20};
     int m_pos = 0; // Position for the first rule in the page.
 
-    enum class rand_mode { p, c };
+    enum class rand_mode { p, n };
     rand_mode m_mode = rand_mode::p;
-    int m_dist = 10; // c ~ dist, p ~ dist / 100
+    int m_dist = 10; // p ~ possibility (percentage), n ~ exact dist
 
     preview_settings m_settings{};
 
@@ -545,13 +544,14 @@ private:
             const int page_end = m_pos + page_size;
             if (m_rules.empty() || m_rules.size() <= page_end) {
                 randT& rand = get_rand();
+                rand.discard(uint32_t(std::time(0)) % 8); // Additional entropy.
                 const int num = m_rules.size() < page_end ? page_end - m_rules.size() : page_size;
                 for (int i = 0; i < num; ++i) {
                     // iso3::rand_rule(m_rules.emplace_back_ex(), rand, {64, 4, 1});
-                    if (m_mode == rand_mode::c) {
-                        iso3::randomize_c(m_rules.emplace_back_ex() = rel, rand, m_dist);
-                    } else {
+                    if (m_mode == rand_mode::p) {
                         iso3::randomize_p(m_rules.emplace_back_ex() = rel, rand, m_dist / 100.0);
+                    } else {
+                        iso3::randomize_n(m_rules.emplace_back_ex() = rel, rand, m_dist);
                     }
                 }
                 assert(m_rules.size() >= page_size);
@@ -573,13 +573,13 @@ private:
             m_mode = rand_mode::p;
         }
         ImGui::SameLine();
-        if (ImGui::RadioButton("C", m_mode == rand_mode::c)) {
-            m_mode = rand_mode::c;
+        if (ImGui::RadioButton("N", m_mode == rand_mode::n)) {
+            m_mode = rand_mode::n;
         }
         ImGui::SameLine();
-        // TODO: the label is not accurate enough. (randomize_c() uses exact dist, while randomize_p() uses possibility.)
+        // TODO: the label is not accurate enough. (randomize_n() uses exact dist, while randomize_p() uses possibility.)
         imgui_SliderIntEx(ImGui::GetFontSize() * 10, "##Dist", m_dist, 0, 100, true,
-                          m_mode == rand_mode::c ? "Dist: %d" : "Dist: %d%%");
+                          m_mode == rand_mode::n ? "Dist: %d" : "Dist: %d%%");
 
         ImGui::Separator();
         m_settings.header();
