@@ -472,7 +472,6 @@ private:
 
 // TODO: support configurable page size.
 // TODO: support more generating modes.
-// TODO: support fixing target rule (e.g. fix to all-0 rule).
 class rule_generator : no_copy {
     static constexpr int page_x = 3, page_y = 2, page_size = page_x * page_y;
 
@@ -481,7 +480,8 @@ class rule_generator : no_copy {
 
     enum class rand_mode { p, n };
     rand_mode m_mode = rand_mode::p;
-    int m_dist = 10; // p ~ possibility (percentage), n ~ exact dist
+    int m_dist = 10;  // p ~ possibility (percentage), n ~ exact dist
+    opt_rule m_rel{}; // Relative to `m_rel ? *m_rel : rel`.
 
     preview_settings m_settings{};
 
@@ -497,7 +497,7 @@ public:
         if (ImGui::Begin(window_name, &open,
                          ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav |
                              ImGuiWindowFlags_AlwaysAutoResize)) {
-            header(rel);
+            header(rel, m_message);
             ImGui::Separator();
 
             m_settings.begin();
@@ -521,7 +521,7 @@ public:
     }
 
 private:
-    void header(const ruleT& rel) {
+    void header(const ruleT& rel, extra_message& m_message) {
         assert(m_rules.empty() ? m_pos == 0 : 0 <= m_pos && m_pos < m_rules.size());
         shortcut_group shortcut{no_active_and_window_focused()};
 
@@ -548,10 +548,12 @@ private:
                 const int num = m_rules.size() < page_end ? page_end - m_rules.size() : page_size;
                 for (int i = 0; i < num; ++i) {
                     // iso3::rand_rule(m_rules.emplace_back_ex(), rand, {64, 4, 1});
+                    ruleT& rule = m_rules.emplace_back_ex();
+                    rule = m_rel ? *m_rel : rel;
                     if (m_mode == rand_mode::p) {
-                        iso3::randomize_p(m_rules.emplace_back_ex() = rel, rand, m_dist / 100.0);
+                        iso3::randomize_p(rule, rand, m_dist / 100.0);
                     } else {
-                        iso3::randomize_n(m_rules.emplace_back_ex() = rel, rand, m_dist);
+                        iso3::randomize_n(rule, rand, m_dist);
                     }
                 }
                 assert(m_rules.size() >= page_size);
@@ -580,6 +582,25 @@ private:
         // TODO: the label is not accurate enough. (randomize_n() uses exact dist, while randomize_p() uses possibility.)
         imgui_SliderIntEx(ImGui::GetFontSize() * 10, "##Dist", m_dist, 0, 100, true,
                           m_mode == rand_mode::n ? "Dist: %d" : "Dist: %d%%");
+        // TODO: improve; should be able to visualize the rule...
+        ImGui::SameLine();
+        if (!m_rel) {
+            if (imgui_DoubleClickButton("Lock###Lock")) {
+                m_rel.emplace_ex() = rel;
+                m_message.set("Locked.");
+            }
+        } else {
+            // Using the same id for slightly better transition visual.
+            if (imgui_DoubleClickButton("Unlock###Lock")) {
+                m_rel.reset();
+                // m_message.set("Unlocked.");
+            }
+            ImGui::SameLine();
+            if (imgui_DoubleClickButton("Update")) {
+                m_rel.emplace_ex() = rel;
+                m_message.set("Updated.");
+            }
+        }
 
         ImGui::Separator();
         m_settings.header();
