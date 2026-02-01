@@ -259,14 +259,14 @@ class preview_settings : no_copy {
     bool restart = false;
     bool pause = false;
     int step = 1;
-    int interval = 0; // Frame based. (0 ~ each frame.)
+    int interval = 1; // Frame based. (1 ~ each frame.)
     int counter = 0;  // 0 ~ tick.
 
 public:
     friend class preview_group;
 
     void restart_all() { restart = true; }
-    void begin() { counter = counter == 0 ? interval : counter - 1; }
+    void begin() { counter = counter == 0 ? interval - 1 : counter - 1; }
     void end() { restart = false; }
 
     // Using a multiple of lcm(2,3) to prevent trivial strobing. (For 3-state rules, both 2 and 3 can be strobing period.)
@@ -274,7 +274,7 @@ public:
     bool tick() const { return counter == 0; }
 
     // `counter` is not strictly necessary, but makes ticking more stable when `interval` changes.
-    // bool tick() const { return interval == 0 || (ImGui::GetFrameCount() % (interval + 1)) == 0; }
+    // bool tick() const { return interval == 1 || (ImGui::GetFrameCount() % interval) == 0; }
 
     void header() {
         shortcut_group shortcut{no_active_and_window_hovered()}; // Instead of focused.
@@ -288,7 +288,7 @@ public:
             pause = !pause;
         }
         constexpr int step_min = 1, step_max = max_step;
-        constexpr int interval_min = 0, interval_max = 20;
+        constexpr int interval_min = 1, interval_max = 20;
         ImGui::SameLine();
         imgui_SliderIntEx(ImGui::GetFontSize() * 10, "##Step", step, step_min, step_max, true, "Step: %d");
         ImGui::SameLine();
