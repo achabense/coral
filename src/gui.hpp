@@ -13,6 +13,7 @@ using iso3::randT;
 using iso3::ruleT;
 using iso3::tileT;
 
+// TODO: not quite useful (cannot track inline global variables)...
 #define static_var static // For tracking non-const static variables.
 
 inline randT& get_rand() {
@@ -255,6 +256,8 @@ inline bool no_active_and_window_hovered() {
 }
 
 // TODO: support pausing/restarting individual windows & applying s/d/f to group.
+// (Currently called "spaces" in UI.)
+// (The shortcut conditions are intentionally not mentioned in UI.)
 class preview_settings : no_copy {
     bool restart = false;
     bool pause = false;
@@ -282,6 +285,12 @@ public:
         if (ImGui::Button("Restart") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_R, repeat_mode::no_repeat)) {
             restart = true;
         }
+        imgui_ItemTooltip(
+            "Restart  (R    ) - restart all spaces in this window.\n"
+            "Pause    (Space) - turn on/off auto mode.\n"
+            "Step     (1/2  ) - change the step of auto mode.\n"
+            "Interval (3/4  ) - change the interval of auto mode (1 ~ each frame).");
+        //  "(Try the shortcuts to see how these work.)");
         ImGui::SameLine();
         ImGui::Checkbox("Pause", &pause);
         if (shortcut(ctrl_mode::no_ctrl, ImGuiKey_Space, repeat_mode::no_repeat)) {
@@ -409,7 +418,9 @@ public:
         }
         if (m_popup.begin_popup(id, /*lock-scroll*/ true)) {
             select |= can_select && ImGui::Selectable("Select");
+            imgui_ItemTooltip("Select for editing. Shortcut: Ctrl+click.");
             copy |= ImGui::Selectable("Copy");
+            imgui_ItemTooltip("Copy the rule. Shortcut: Ctrl+C.");
             m_popup.end_popup();
         }
         if (can_select && hovered && ctrl) {
@@ -472,6 +483,7 @@ private:
 
 // TODO: support configurable page size.
 // TODO: support more generating modes.
+// !!TODO: tooltips.
 class rule_generator : no_copy {
     static constexpr int page_x = 3, page_y = 2, page_size = page_x * page_y;
 
@@ -582,6 +594,7 @@ private:
         // TODO: the label is not accurate enough. (randomize_n() uses exact dist, while randomize_p() uses possibility.)
         imgui_SliderIntEx(ImGui::GetFontSize() * 10, "##Dist", m_dist, 0, 100, true,
                           m_mode == rand_mode::n ? "Dist: %d" : "Dist: %d%%");
+        // !!TODO: hard to explain / use...
         // TODO: improve; should be able to visualize the rule...
         ImGui::SameLine();
         if (!m_rel) {
@@ -608,6 +621,7 @@ private:
 };
 
 // TODO: support resizing the window.
+// TODO: support example rules ("Example" button)?
 class rule_loader : no_copy {
     std::vector<ruleT> m_rules{};
     preview_settings m_settings{};
@@ -667,6 +681,7 @@ private:
         if (imgui_DoubleClickButton("Clear")) {
             m_rules.clear();
             m_rules.shrink_to_fit();
+            // TODO: is it possible to tell the child window the contents are cleared (so the slider won't appear for an extra frame)?
             reset_scroll = true;
         }
         ImGui::EndDisabled();
@@ -676,10 +691,12 @@ private:
             const char* str = ImGui::GetClipboardText(); // May be nullptr.
             extract_rules(str ? str : "", m_message);
         }
+        imgui_ItemTooltip("Load rules from the clipboard. Shortcut: Ctrl+V.");
         ImGui::SameLine();
-        if (imgui_DoubleClickButton("Open") || shortcut(ctrl_mode::ctrl, ImGuiKey_O, repeat_mode::no_repeat)) {
+        if (imgui_DoubleClickButton("Open") /*|| shortcut(ctrl_mode::ctrl, ImGuiKey_O, repeat_mode::no_repeat)*/) {
             m_loader.open = true;
         }
+        imgui_ItemTooltip("Load rules from files.");
         if (m_loader.open) /*micro optimization*/ {
             std::string str{};
             if (m_loader.display_if_open(m_message, str, 1024 * 1024)) {
@@ -748,6 +765,60 @@ public:
         int preview_index = 0;
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + code_image_width() + item_spacing); // For alignment.
         m_preview.image(rule, preview_index++, m_settings, m_popup, m_message, nullptr);
+        if (imgui_ItemTooltip_Enabled) {
+            const auto text_with_tooltip = [](const char* text, const char* tooltip) {
+                // ImGui::TextDisabled("%s", text);
+                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+                ImGui::TextUnformatted(text, text + std::strlen(text));
+                ImGui::PopStyleColor();
+                imgui_ItemTooltip(tooltip, false /*no highlight*/);
+            };
+
+            ImGui::SameLine(/*0, item_spacing * 3*/);
+            ImGui::BeginGroup();
+            text_with_tooltip( // TODO: support opening link in browser.
+                "About this program",
+                "Coral v1.0.0 WIP (c) 2025-2026 achabense (GitHub username)\n\n"
+                "GitHub repo: https://github.com/achabense/coral\n\n"
+                "This program has access to all isotropic 3-state rules in the range-1 Moore neighborhood.");
+            text_with_tooltip( // "Space windows" sounds good, but may confuse with regular windows.
+                "Spaces",
+                "Rules are emulated in the torus spaces.\n\n" // Can be imagined as periodic unit in the infinite space.
+                "Operations:\n"
+                "Hold to pause.\n"
+                "Right-click to open menu.\n"
+                "S - run by the step (regardless of whether paused).\n"
+                "D - run by 1.\n"
+                "F - run by the largest step at each frame.\n"
+                "Ctrl+C           - copy the rule.\n"
+                "Ctrl+click       - select for editing.\n"
+                "Ctrl/hold+scroll - change zoom level.\n\n"
+                "(Also see the tooltip for \"Restart\".)");
+            text_with_tooltip( // TODO: maintain a file for recently-copied rules (e.g. recently_copied.txt)?
+                "Saving and loading rules",
+                "Rules can be saved and loaded in a plain-text format specific to this program.\n\n"
+                "For each space, use Ctrl+C (or open menu) to copy the rule. Remember to paste the rule elsewhere.\n\n"
+                "Use \"Load\" to load rules from files or the clipboard.");
+            text_with_tooltip( //
+                "Random-access editing",
+                "!!TODO: explain..."
+                "The program is also able to generate random rules. See \"Generate\" for details.");
+            text_with_tooltip( //
+                "Preventing strobing effect",
+                "Due to certain value mappings, some rules have large spans of area flashing between different colors.\n\n"
+                "To prevent the strobing effect, you can change the step to e.g. 2, 3, etc. (A multiple of 6 is likely to work for most rules.)");
+            text_with_tooltip( //
+                "Scrolling",
+                "To scroll with the scrollbar:\n"
+                "Click      - scroll towards position.\n"
+                "Ctrl+click - scroll to position.\n\n" // Or drag from scroll button.
+                "To scroll with shortcuts:\n"
+                "Up        - scroll up.\n"
+                "Down      - scroll down.\n"
+                "Ctrl+Up   - scroll to top.\n"
+                "Ctrl+Down - scroll to bottom.");
+            ImGui::EndGroup();
+        }
 
         ImGui::Separator();
 
@@ -801,7 +872,11 @@ public:
                     // More accurate than `ImGui::SetScrollHereY(0)`.
                     ImGui::SetScrollFromPosY(ImGui::GetItemRectMin().y - ImGui::GetWindowPos().y, 0);
                 }
-                if (ImGui::BeginItemTooltip()) {
+                if (imgui_ItemTooltip_Enabled && group_index == 1) {
+                    imgui_ItemTooltip(
+                        "!!TODO: explain..."
+                        "Right-click this (actually anywhere in the window) to locate groups.");
+                } else if (ImGui::BeginItemTooltip()) {
                     for (bool first = true; const codeT c : group) {
                         if (!std::exchange(first, false)) {
                             ImGui::SameLine(0, item_spacing);
@@ -837,28 +912,55 @@ public:
         m_preview.end();
         m_popup.end();
         m_message.display_if_present();
+        imgui_ItemTooltip_Message.display_if_present();
     }
 
 private:
     void header() {
         shortcut_group shortcut{no_active_and_window_focused()};
 
+        ImGui::Checkbox("Tooltips", &imgui_ItemTooltip_Enabled);
+        // TODO: should take part in filtering.
+        if (!ImGui::IsAnyItemActive() && test_key(ctrl_mode::no_ctrl, ImGuiKey_H, repeat_mode::no_repeat)) {
+            imgui_ItemTooltip_Enabled = !imgui_ItemTooltip_Enabled;
+        }
+        imgui_ItemTooltip(
+            "Turn on/off tooltips. Shortcut: H (works everywhere).\n\n"
+            "You can press Ctrl+C to copy the text in each tooltip.");
+        //  "(Try Ctrl+C to see whether the clipboard works. The program relies on the clipboard for saving rules.)");
+        ImGui::SameLine();
         ImGui::Checkbox("Load", &m_loader.open);
+        imgui_ItemTooltip("Load rules from files or the clipboard.");
         ImGui::SameLine();
         ImGui::Checkbox("Generate", &m_generator.open);
+        imgui_ItemTooltip("Generate random rules.");
         ImGui::SameLine();
         const bool to_zero = imgui_DoubleClickButton("Zero");
+        imgui_ItemTooltip(
+            "(Purple buttons like these require double-clicking.)\n\n"
+            "For rule editing (set the rule to the following rules):\n"
+            "Zero     - the all-0 rule, i.e. the rule that maps cell to 0 in all cases.\n"
+            "Identity - the rule that preserves cell's value in all cases.\n"
+            "Life     - a special 3-state version of the Game of Life rule.\n\n"
+            "The rule for editing is initially the all-0 rule.");
         ImGui::SameLine();
         const bool to_identity = imgui_DoubleClickButton("Identity");
         ImGui::SameLine();
         const bool to_life = imgui_DoubleClickButton("Life");
         ImGui::SameLine();
         ImGui::BeginDisabled(!m_rule.has_prev());
+        // !!TODO: whether to support ctrl shortcuts (ctrl+Z/Y/C/click)?
         // (Left/right as regular shortcuts for <</>>, ctrl+Z/Y as a convenient way to undo/redo ctrl+click selection.)
         const bool to_prev = ImGui::Button("<<") ||
                              shortcut(ctrl_mode::no_ctrl, ImGuiKey_LeftArrow, repeat_mode::no_repeat) ||
                              shortcut(ctrl_mode::ctrl, ImGuiKey_Z, repeat_mode::no_repeat);
         ImGui::EndDisabled();
+        imgui_ItemTooltip(
+            // "(Left/Right/Ctrl+Right work for similar items in other windows.)\n\n"
+            "Record for rule editing:\n"
+            "<< (Left  or Ctrl+Z) - get to the previous rule (~ undoing selection).\n"
+            ">> (Right or Ctrl+Y) - get to the next rule.\n"
+            "|> (Ctrl+Right     ) - get to the last rule.");
         ImGui::SameLine();
         ImGui::BeginDisabled(!m_rule.has_next());
         const bool to_next = ImGui::Button(">>") ||
@@ -873,6 +975,9 @@ private:
         ImGui::SameLine();
         ImGui::Text("%d fps", (int)std::round(ImGui::GetIO().Framerate));
 
+        // if (to_zero || to_identity || to_life) {
+        //     m_message.set("Selected.");
+        // }
         if (to_zero) {
             assert(!to_rule);
             iso3::to_zero(to_rule.emplace_ex());
@@ -904,6 +1009,7 @@ private:
         }
     }
 
+    // !!TODO: tooltips.
     static void select_group(int& to_locate) {
         shortcut_group shortcut{no_active_and_window_focused()};
 

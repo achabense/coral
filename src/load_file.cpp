@@ -143,6 +143,7 @@ using rel_mode = folderT::rel_mode;
 // TODO: refine for different cases & some error messages should appear longer.
 static constexpr const char* msg_failed = "Failed.";
 
+// TODO: support opening in browser.
 class file_selector : no_copy {
     pathT m_home{}; // Canonical.
     folderT m_current{};
@@ -225,6 +226,7 @@ public:
                 }
                 m_popup.end_popup();
             }
+            imgui_ItemTooltip("Right-click to open menu.");
         }
 
         ImGui::Separator();
@@ -252,7 +254,7 @@ public:
         if (ImGui::BeginChild("Entries", ImVec2(0, -(ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y * 2)))) {
             const entryT* sel = nullptr;
             const std::string_view filter = input_filter;
-            for (const auto& entry : m_current.entries()) {
+            for (bool first = true; const auto& entry : m_current.entries()) {
                 if (!filter.empty() && entry.str.find(filter) == std::string::npos) {
                     continue;
                 }
@@ -267,6 +269,9 @@ public:
                 if (imgui_SelectableEx(str_id, id, entry.str.c_str(), false,
                                        ImGuiSelectableFlags_NoAutoClosePopups | extra_flag)) {
                     sel = &entry;
+                }
+                if (std::exchange(first, false)) {
+                    imgui_ItemTooltip("Right-click to open menu.");
                 }
                 if (ImGui::IsItemHovered()) {
                     m_popup.open_on_idle_rclick(id);
@@ -334,6 +339,7 @@ bool file_loader::display_if_open(extra_message& m_message, std::string& data, c
     file_selector& selector = *reinterpret_cast<file_selector*>(m_impl.get());
     if (!selector.valid()) {
         // TODO: improve behavior (disable the open button afterwards, or support input-only mode.)
+        // (-> "Paste (path)" button ~ treat clipboard text as file path and try to load?)
         open = false;
         m_message.set(msg_failed);
         return false;

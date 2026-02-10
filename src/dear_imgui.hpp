@@ -164,6 +164,9 @@ public:
     }
 };
 
+// TODO: define globally? `extra_message&` affects too many functions...
+// inline extra_message m_message{};
+
 class file_loader : no_copy {
     std::shared_ptr<void> m_impl{}; // Unique ownership; just for simpler code.
 
@@ -176,3 +179,35 @@ public:
     // TODO: the current msg handling works but is somewhat messy.
     bool display_if_open(extra_message& m_message, std::string& data, int max_size = 1024 * 1024);
 };
+
+// TODO: temp workaround for tooltips.
+// (Not general enough to be named imgui_Abcd & should prevent inline var if possible & a separate message (to prevent affecting existing functions) is especially terrible...)
+inline extra_message imgui_ItemTooltip_Message{};
+inline bool imgui_ItemTooltip_Enabled = true;
+inline void imgui_ItemTooltip(const char* tooltip, bool highlight = true) {
+    if (!imgui_ItemTooltip_Enabled) {
+        return;
+    }
+    if (highlight) {
+        ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
+                                                  IM_COL32(255, 255, 0, 32));
+    }
+    if (ImGui::BeginItemTooltip()) {
+        // TODO: ideally should be fine-tuned per tooltip.
+        ImGui::PushTextWrapPos(42 * ImGui::GetFontSize());
+        ImGui::TextUnformatted(tooltip, tooltip + std::strlen(tooltip));
+        ImGui::PopTextWrapPos();
+        // TODO: should take part in filtering.
+        if (ImGui::GetIO().KeyCtrl && !ImGui::IsAnyItemActive()) {
+            const ImVec2 padding = ImGui::GetStyle().WindowPadding - ImVec2(2, 2);
+            ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetWindowPos() + padding,
+                                                      ImGui::GetWindowPos() + ImGui::GetWindowSize() - padding,
+                                                      IM_COL32(255, 255, 255, 32));
+            if (ImGui::IsKeyPressed(ImGuiKey_C, false)) {
+                ImGui::SetClipboardText(tooltip);
+                imgui_ItemTooltip_Message.set("Copied.");
+            }
+        }
+        ImGui::EndTooltip();
+    }
+}

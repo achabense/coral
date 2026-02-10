@@ -1,4 +1,4 @@
-# https://releases.llvm.org/16.0.0/tools/clang/docs/ClangFormatStyleOptions.html
+# https://clang.llvm.org/docs/ClangFormat.html
 
 BasedOnStyle:  LLVM
 
@@ -8,6 +8,11 @@ BreakStringLiterals: false
 AllowShortFunctionsOnASingleLine: All
 
 AlwaysBreakTemplateDeclarations: true
+
+# func_name(
+#     "0123456789"
+#     "ABCD");
+AlwaysBreakBeforeMultilineStrings: true
 
 AlignEscapedNewlines: Left
 
