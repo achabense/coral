@@ -374,6 +374,7 @@ public:
             return;
         }
 
+        const bool ctrl = ImGui::GetIO().KeyCtrl;
         const bool hovered = ImGui::IsItemHovered();
         const bool pressed = hovered && ImGui::IsItemActive();
         const char op = (hovered && (pressed || !ImGui::IsAnyItemActive())) ? test_op() : '\0';
@@ -393,7 +394,7 @@ public:
         } else if (op && (op == 'S' || op == 'D' || op == 'F')) {
             tile.run(rule, op == 'S' ? m_settings.step : op == 'D' ? 1 : /*'F'*/ m_settings.max_step);
             blob.skip_tick = true;
-        } else if (m_settings.pause || pressed) {
+        } else if (m_settings.pause || (!ctrl && pressed)) {
             blob.skip_tick = true;
         } else if (m_settings.tick() && !std::exchange(blob.skip_tick, false)) {
             tile.run(rule, m_settings.step);
@@ -405,28 +406,34 @@ public:
         draw.AddImage(texture, min + border, max - border);
         if (hovered && ImGui::IsMousePosValid() && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
             display_in_tooltip(texture, texture_size(), ImGui::GetMousePos() - min - border,
-                               /*ImGui::GetIO().KeyCtrl || */ pressed /*-> scroll to change zoom level*/);
+                               ctrl || pressed /*-> scroll to change zoom level*/);
         }
         // TODO: working but need to use a separate id for popup in the future.
         draw.AddRect(min, max, hovered || m_popup.opened(id) ? IM_COL32_WHITE : ImGui::GetColorU32(ImGuiCol_Border));
 
+        const bool can_select = to_rule;
+        bool select = false, copy = op == 'C';
         if (hovered) {
             m_popup.open_on_idle_rclick(id);
         }
         if (m_popup.begin_popup(id, /*lock-scroll*/ true)) {
-            if (to_rule) {
-                if (ImGui::Selectable("Select")) {
-                    to_rule->emplace_ex() = rule;
-                    m_message.set("Selected.");
-                }
-                imgui_ItemTooltip("Select for editing.");
-            }
-            if (ImGui::Selectable("Copy")) {
-                ImGui::SetClipboardText(iso3::to_string(rule).c_str());
-                m_message.set("Copied.");
-            }
+            select |= can_select && ImGui::Selectable("Select");
+            imgui_ItemTooltip("Select for editing.");
+            copy |= ImGui::Selectable("Copy");
             imgui_ItemTooltip("Copy the rule.");
             m_popup.end_popup();
+        }
+        if (can_select && hovered && ctrl) {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+            select |= ImGui::IsItemActivated(); // Clicked.
+        }
+        if (select) {
+            to_rule->emplace_ex() = rule;
+            m_message.set("Selected.");
+        }
+        if (copy) {
+            ImGui::SetClipboardText(iso3::to_string(rule).c_str());
+            m_message.set("Copied.");
         }
     }
 
@@ -444,6 +451,7 @@ private:
         return test_key(ctrl_mode::no_ctrl, ImGuiKey_S, repeat_mode::repeat)   ? 'S'
                : test_key(ctrl_mode::no_ctrl, ImGuiKey_D, repeat_mode::repeat) ? 'D'
                : test_key(ctrl_mode::no_ctrl, ImGuiKey_F, repeat_mode::down)   ? 'F'
+               : test_key(ctrl_mode::ctrl, ImGuiKey_C, repeat_mode::no_repeat) ? 'C'
                                                                                : '\0';
     }
 
@@ -722,7 +730,7 @@ private:
 };
 
 // TODO: support adding to temp list.
-// TODO: whether to support ctrl shortcuts for spaces (ctrl+scroll/click/Z/Y/C)?
+// !!TODO: whether to support ctrl shortcuts for spaces (ctrl+scroll/click/Z/Y/C)? (Intentionally undocumented in UI.)
 class main_data : no_copy {
     using isotropic = iso3::isotropic;
     record_for<ruleT> m_rule{20};
@@ -941,8 +949,10 @@ private:
         const bool to_life = imgui_DoubleClickButton("Life");
         ImGui::SameLine();
         ImGui::BeginDisabled(!m_rule.has_prev());
-        const bool to_prev =
-            ImGui::Button("<<") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_LeftArrow, repeat_mode::no_repeat);
+        // (Left/right as regular shortcuts for <</>>, ctrl+Z/Y as a convenient way to undo/redo ctrl+click selection.)
+        const bool to_prev = ImGui::Button("<<") ||
+                             shortcut(ctrl_mode::no_ctrl, ImGuiKey_LeftArrow, repeat_mode::no_repeat) ||
+                             shortcut(ctrl_mode::ctrl, ImGuiKey_Z, repeat_mode::no_repeat);
         ImGui::EndDisabled();
         imgui_ItemTooltip(
             // "(Left/Right/Ctrl+Right work for similar items in other windows.)\n\n"
@@ -952,8 +962,9 @@ private:
             "|> (Ctrl+Right) - get to the last rule.");
         ImGui::SameLine();
         ImGui::BeginDisabled(!m_rule.has_next());
-        const bool to_next =
-            ImGui::Button(">>") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_RightArrow, repeat_mode::no_repeat);
+        const bool to_next = ImGui::Button(">>") ||
+                             shortcut(ctrl_mode::no_ctrl, ImGuiKey_RightArrow, repeat_mode::no_repeat) ||
+                             shortcut(ctrl_mode::ctrl, ImGuiKey_Y, repeat_mode::no_repeat);
         ImGui::SameLine();
         const bool to_last =
             ImGui::Button("|>") || shortcut(ctrl_mode::ctrl, ImGuiKey_RightArrow, repeat_mode::no_repeat);
