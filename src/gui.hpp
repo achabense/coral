@@ -483,7 +483,6 @@ private:
 
 // TODO: support configurable page size.
 // TODO: support more generating modes.
-// !!TODO: tooltips.
 class rule_generator : no_copy {
     static constexpr int page_x = 3, page_y = 2, page_size = page_x * page_y;
 
@@ -542,6 +541,7 @@ private:
             m_rules.resize_ex(0); // Won't actually free up memory.
             m_pos = 0;
         }
+        // imgui_ItemTooltip("When there are too many rules, the oldest rules will be cleared automatically.");
         ImGui::EndDisabled();
         ImGui::SameLine();
         ImGui::BeginDisabled(m_pos == 0);
@@ -550,6 +550,13 @@ private:
             m_pos = std::max(0, m_pos - page_size);
         }
         ImGui::EndDisabled();
+        imgui_ItemTooltip(
+            "For rule generation:\n"
+            "<<  (Left      ) - get to the previous page.\n"
+            ">>> (Right     ) - get to the next page or generate a new page.\n"
+            "|>  (Ctrl+Right) - get to the last page.\n\n"
+            "\">>>\" will generate new pages of random rules when you are at the last page (or when there are no rules). See the tooltip for \"P\" for more details.\n\n"
+            "(Try the shortcuts to see how these work.)");
         ImGui::SameLine();
         if (ImGui::Button(">>>") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_RightArrow, repeat_mode::no_repeat)) {
             m_settings.restart_all();
@@ -581,11 +588,16 @@ private:
             m_pos = m_rules.size() - page_size;
         }
         ImGui::EndDisabled();
-        // !!TODO: should explain in UI...
         ImGui::SameLine();
         if (ImGui::RadioButton("P", m_mode == rand_mode::p)) {
             m_mode = rand_mode::p;
         }
+        imgui_ItemTooltip( // !!TODO: should rewrite. (Where to explain "distance"?)
+            "(Distance ~ the number of groups with different values.)\n\n"
+            "P - the generated rules will have roughly p% groups with different values.\n"
+            "N - the generated rules will have exactly n groups with different values.\n\n"
+            "By default (when not \"locked\"), the distance is relative to the selected rule (for editing). You can lock the rule so rule generation will not be affected by selection (editing).\n\n"
+            "(P is suitable for discovering random rules; N is suitable for searching around specific rules.)");
         ImGui::SameLine();
         if (ImGui::RadioButton("N", m_mode == rand_mode::n)) {
             m_mode = rand_mode::n;
@@ -594,26 +606,17 @@ private:
         // TODO: the label is not accurate enough. (randomize_n() uses exact dist, while randomize_p() uses possibility.)
         imgui_SliderIntEx(ImGui::GetFontSize() * 10, "##Dist", m_dist, 0, 100, true,
                           m_mode == rand_mode::n ? "Dist: %d" : "Dist: %d%%");
-        // !!TODO: hard to explain / use...
         // TODO: improve; should be able to visualize the rule...
         ImGui::SameLine();
-        if (!m_rel) {
-            if (imgui_DoubleClickButton("Lock###Lock")) {
+        if (bool locked = bool(m_rel); ImGui::Checkbox("Lock", &locked)) {
+            if (!m_rel) {
                 m_rel.emplace_ex() = rel;
                 m_message.set("Locked.");
-            }
-        } else {
-            // Using the same id for slightly better transition visual.
-            if (imgui_DoubleClickButton("Unlock###Lock")) {
+            } else {
                 m_rel.reset();
-                // m_message.set("Unlocked.");
-            }
-            ImGui::SameLine();
-            if (imgui_DoubleClickButton("Update")) {
-                m_rel.emplace_ex() = rel;
-                m_message.set("Updated.");
             }
         }
+        imgui_ItemTooltip("See the tooltip for \"P\" for details.");
 
         ImGui::Separator();
         m_settings.header();
@@ -730,7 +733,7 @@ private:
 };
 
 // TODO: support adding to temp list.
-// !!TODO: whether to support ctrl shortcuts for spaces (ctrl+scroll/click/Z/Y/C)? (Intentionally undocumented in UI.)
+// TODO: whether to support ctrl shortcuts for spaces (ctrl+scroll/click/Z/Y/C)? (Intentionally undocumented in UI.)
 class main_data : no_copy {
     using isotropic = iso3::isotropic;
     record_for<ruleT> m_rule{20};
