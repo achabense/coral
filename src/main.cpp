@@ -8,6 +8,23 @@
 
 static_var SDL_Window* window = nullptr;
 static_var SDL_Renderer* renderer = nullptr;
+static_var int vsync = 1;
+
+void set_framerate() {
+    // Intentionally not delay-based (to prevent irregular frame interval).
+    int old_vsync = vsync;
+    for (const int v : {1, 2, 3}) {
+        if (v != 1) {
+            ImGui::SameLine();
+        }
+        const char label[]{'1', '/', char('0' + v), '\0'};
+        ImGui::RadioButton(label, &vsync, v);
+    }
+    if (old_vsync != vsync) {
+        // TODO: working, but it's unclear whether this is guaranteed to work inside frame.
+        SDL_SetRenderVSync(renderer, vsync);
+    }
+}
 
 [[noreturn]] static void exit_failure() {
     assert(false);
@@ -86,7 +103,7 @@ int main(int, char**) {
         SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
         // SDL_MaximizeWindow(window);
 
-        SDL_SetRenderVSync(renderer, 1); // Enable vsync.
+        SDL_SetRenderVSync(renderer, vsync); // 1 (enabled) by default.
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
         SDL_RenderPresent(renderer);

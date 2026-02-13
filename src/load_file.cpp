@@ -211,22 +211,14 @@ public:
             // ImGui::TextUnformatted(m_current.str().c_str());
             const auto& str = m_current.str(); // Micro optimization.
             ImGui::TextUnformatted(str.data(), str.data() + str.size());
-            const bool hovered = ImGui::IsItemHovered();
-            if (hovered || m_popup.opened(-50)) {
-                const ImVec2 min = ImGui::GetItemRectMin();
-                const ImVec2 max = ImGui::GetItemRectMax();
-                ImGui::GetWindowDrawList()->AddLine(ImVec2(min.x, max.y), max, IM_COL32_WHITE);
-                if (hovered) {
-                    m_popup.open_on_idle_rclick(-50);
-                }
-            }
+            m_popup.open_for_text(-50, ImGui::IsItemHovered());
             if (m_popup.begin_popup(-50, true)) {
                 if (ImGui::Selectable("Copy path")) {
                     copy_path(m_current.path(), str.c_str());
                 }
                 m_popup.end_popup();
             }
-            imgui_ItemTooltip("Right-click to open menu.");
+            imgui_ItemTooltip("Right-click to copy path.");
         }
 
         ImGui::Separator();
@@ -271,7 +263,7 @@ public:
                     sel = &entry;
                 }
                 if (std::exchange(first, false)) {
-                    imgui_ItemTooltip("Right-click to open menu.");
+                    imgui_ItemTooltip("Right-click to copy path.");
                 }
                 if (ImGui::IsItemHovered()) {
                     m_popup.open_on_idle_rclick(id);

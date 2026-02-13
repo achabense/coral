@@ -87,6 +87,8 @@ public:
         if (!owner_id) {
             ImGui::OpenPopup(popup_id, ImGuiPopupFlags_NoReopen);
             owner_id = id;
+            // activated = true;   // Otherwise, begin_popup() cannot be called before open() (id will be reset by end()).
+            // imgui_LockScroll(); // At least for this frame.
         }
     }
     bool opened() const { return owner_id.has_value(); }
@@ -95,13 +97,24 @@ public:
     // Workaround to enable popup when an input field is active but not held.
     // Must work in combination with some hover test & should not apply to input field itself.
     // (Normally `!IsAnyitemActive()` is enough, but when an input field is accepting input (even if not held), it will also report active id, and it's strange to disable popup in this case. `IsItemHovered()` (for other items) and `IsWindowHovered()` will report false normally when the input field is actually held.)
-    void open_on_idle_rclick(int id) {
+    void open_on_idle_rclick(int id /*, bool hovered*/) {
+        // if (!hovered) { return; }
         assert(popup_id != 0);
         assert(!imgui_IsItemDisabled());
         if (!owner_id && (!ImGui::IsAnyItemActive() || ImGui::GetIO().WantTextInput) &&
             ImGui::IsMouseClicked(ImGuiMouseButton_Right) /*&& !ImGui::IsMouseDown(ImGuiMouseButton_Left)*/) {
-            ImGui::OpenPopup(popup_id, ImGuiPopupFlags_NoReopen);
-            owner_id = id;
+            open(id); // TODO: slightly wasteful.
+        }
+    }
+
+    void open_for_text(int id, bool hovered) {
+        if (hovered || opened(id)) {
+            const ImVec2 min = ImGui::GetItemRectMin();
+            const ImVec2 max = ImGui::GetItemRectMax();
+            ImGui::GetWindowDrawList()->AddLine(ImVec2(min.x, max.y), max, IM_COL32_WHITE);
+            if (hovered) {
+                open_on_idle_rclick(id);
+            }
         }
     }
 

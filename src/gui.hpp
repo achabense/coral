@@ -33,6 +33,8 @@ inline ImU32 color_for(const cellT c) {
     }
 }
 
+extern void set_framerate();
+
 extern ImTextureID texture_create(const tileT& /*not-empty*/);
 extern void texture_update(ImTextureID /*not-null*/, const tileT& /*same-size*/);
 extern void texture_destroy(ImTextureID /*not-null*/);
@@ -749,12 +751,12 @@ class main_data : no_copy {
 
 public:
     void display() {
-        header();
-        ImGui::Separator();
-
         m_popup.set_popup_id("Popup");
         m_popup.begin();
         m_preview.begin();
+
+        header();
+        ImGui::Separator();
 
         // TODO: using fixed names for convenience (technically should be specified per object).
         m_loader.display_if_open("Load", m_preview, 20000, m_popup, m_message, to_rule);
@@ -869,6 +871,8 @@ public:
 
                 const codeT group_0 = group[0];
                 code_image(group_0);
+                // TODO: where to open popup? (Window bg or group button?)
+                // if (ImGui::IsItemHovered()) { m_popup.open_on_idle_rclick(-100); }
                 const ImVec2 code_image_max = ImGui::GetItemRectMax();
                 render_cell(rule[group_0], {code_image_max.x - cell_width, code_image_max.y + cell_width});
                 if (to_locate == group_0) {
@@ -976,6 +980,12 @@ private:
         m_settings.header();
         ImGui::SameLine();
         ImGui::Text("%d fps", (int)std::round(ImGui::GetIO().Framerate));
+        m_popup.open_for_text(-200, ImGui::IsItemHovered());
+        if (m_popup.begin_popup(-200, true)) {
+            set_framerate();
+            m_popup.end_popup();
+        }
+        imgui_ItemTooltip("Right-click to set frame rate.");
 
         // if (to_zero || to_identity || to_life) {
         //     m_message.set("Selected.");
