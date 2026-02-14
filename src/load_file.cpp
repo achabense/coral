@@ -327,7 +327,7 @@ bool file_loader::display_if_open(extra_message& m_message, std::string& data, c
     if (!m_impl) {
         m_impl.reset(new file_selector{});
     }
-    file_selector& selector = *reinterpret_cast<file_selector*>(m_impl.get());
+    file_selector& selector = *static_cast<file_selector*>(m_impl.get());
     if (!selector.valid()) {
         // TODO: improve behavior (disable the open button afterwards, or support input-only mode.)
         // (-> "Paste (path)" button ~ treat clipboard text as file path and try to load?)

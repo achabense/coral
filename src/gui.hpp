@@ -258,9 +258,8 @@ inline bool no_active_and_window_hovered() {
 }
 
 // TODO: support pausing/restarting individual windows & applying s/d/f to group.
-// (Currently called "spaces" in UI.)
 // (The shortcut conditions are intentionally not mentioned in UI.)
-class preview_settings : no_copy {
+class space_settings : no_copy {
     bool restart = false;
     bool pause = false;
     int step = 1;
@@ -268,7 +267,7 @@ class preview_settings : no_copy {
     int counter = 0;  // 0 ~ tick.
 
 public:
-    friend class preview_group;
+    friend class space_group;
 
     void restart_all() { restart = true; }
     void begin() { counter = counter == 0 ? interval - 1 : counter - 1; }
@@ -329,7 +328,7 @@ public:
 };
 
 // TODO: support configurable init state.
-class preview_group : no_copy {
+class space_group : no_copy {
     struct blobT {
         tile_with_texture tile{};
         bool active = false;
@@ -361,7 +360,7 @@ public:
     // right-click -> op menu (select/copy)
     // no-ctrl + s/d/f -> extra step
     // `id` must be unique per group & imgui's id stack (for unique `GetItemID()`).
-    void image(const ruleT& rule, const int id, const preview_settings& m_settings, shared_popup& m_popup,
+    void image(const ruleT& rule, const int id, const space_settings& m_settings, shared_popup& m_popup,
                extra_message& m_message, opt_rule* to_rule = nullptr) {
         constexpr ImVec2 border = {1, 1};
         // TODO: is it possible to distinguish items with no id from the background (e.g. IsBgHovered())?
@@ -411,6 +410,7 @@ public:
                                ctrl || pressed /*-> scroll to change zoom level*/);
         }
         // TODO: working but need to use a separate id for popup in the future.
+        // (Or define a member popup?)
         draw.AddRect(min, max, hovered || m_popup.opened(id) ? IM_COL32_WHITE : ImGui::GetColorU32(ImGuiCol_Border));
 
         const bool can_select = to_rule;
@@ -496,11 +496,11 @@ class rule_generator : no_copy {
     int m_dist = 10;  // p ~ possibility (percentage), n ~ exact dist
     opt_rule m_rel{}; // Relative to `m_rel ? *m_rel : rel`.
 
-    preview_settings m_settings{};
+    space_settings m_settings{};
 
 public:
     bool open = false;
-    void display_if_open(const char* window_name, const ruleT& rel, preview_group& m_preview, const int starting_id,
+    void display_if_open(const char* window_name, const ruleT& rel, space_group& m_spaces, const int starting_id,
                          shared_popup& m_popup, extra_message& m_message, opt_rule& to_rule) {
         if (!open) {
             return;
@@ -523,9 +523,9 @@ public:
                     // ImGui::Separator();
                 }
                 if (m_pos + i < m_rules.size()) {
-                    m_preview.image(m_rules.at(m_pos + i), starting_id + i, m_settings, m_popup, m_message, &to_rule);
+                    m_spaces.image(m_rules.at(m_pos + i), starting_id + i, m_settings, m_popup, m_message, &to_rule);
                 } else {
-                    m_preview.dummy();
+                    m_spaces.dummy();
                 }
             }
             m_settings.end();
@@ -629,15 +629,15 @@ private:
 // TODO: support example rules ("Example" button)?
 class rule_loader : no_copy {
     std::vector<ruleT> m_rules{};
-    preview_settings m_settings{};
+    space_settings m_settings{};
 
     file_loader m_loader{};
     bool reset_scroll = false;
 
 public:
     bool open = false;
-    void display_if_open(const char* window_name, preview_group& m_preview, const int starting_id,
-                         shared_popup& m_popup, extra_message& m_message, opt_rule& to_rule) {
+    void display_if_open(const char* window_name, space_group& m_spaces, const int starting_id, shared_popup& m_popup,
+                         extra_message& m_message, opt_rule& to_rule) {
         if (!open) {
             return;
         }
@@ -656,7 +656,7 @@ public:
             // TODO: relying on header size not exceeding the width here.
             const ImVec2 item_spacing = ImGui::GetStyle().ItemSpacing;
             const ImVec2 child_size =
-                m_preview.image_size() * ImVec2(2, 2) + item_spacing + ImVec2(ImGui::GetStyle().ScrollbarSize, 0);
+                m_spaces.image_size() * ImVec2(2, 2) + item_spacing + ImVec2(ImGui::GetStyle().ScrollbarSize, 0);
             if (ImGui::BeginChild("Rules", child_size) && !m_rules.empty()) {
                 m_settings.begin();
                 const int total = m_rules.size();
@@ -667,11 +667,11 @@ public:
                     } else if (i != 0) {
                         // ImGui::Separator();
                     }
-                    m_preview.image(m_rules[i], starting_id + i, m_settings, m_popup, m_message, &to_rule);
+                    m_spaces.image(m_rules[i], starting_id + i, m_settings, m_popup, m_message, &to_rule);
                 }
                 m_settings.end();
 
-                imgui_SetScrollWithUpDown(m_preview.image_size().y + item_spacing.y);
+                imgui_SetScrollWithUpDown(m_spaces.image_size().y + item_spacing.y);
             }
             ImGui::EndChild();
         }
@@ -739,13 +739,13 @@ private:
 class main_data : no_copy {
     using isotropic = iso3::isotropic;
     record_for<ruleT> m_rule{20};
-    preview_settings m_settings{};
+    space_settings m_settings{};
     opt_rule to_rule{};
 
     rule_loader m_loader{};
     rule_generator m_generator{};
 
-    preview_group m_preview{};
+    space_group m_spaces{};
     shared_popup m_popup{};
     extra_message m_message{};
 
@@ -753,14 +753,14 @@ public:
     void display() {
         m_popup.set_popup_id("Popup");
         m_popup.begin();
-        m_preview.begin();
+        m_spaces.begin();
 
         header();
         ImGui::Separator();
 
         // TODO: using fixed names for convenience (technically should be specified per object).
-        m_loader.display_if_open("Load", m_preview, 20000, m_popup, m_message, to_rule);
-        m_generator.display_if_open("Generate", m_rule.get(), m_preview, 10000, m_popup, m_message, to_rule);
+        m_loader.display_if_open("Load", m_spaces, 20000, m_popup, m_message, to_rule);
+        m_generator.display_if_open("Generate", m_rule.get(), m_spaces, 10000, m_popup, m_message, to_rule);
 
         // TODO: slightly wasteful. (Can reuse memory by making `record_for::get()` return non-const ref, but that's risky.)
         std::unique_ptr<ruleT> temp_rule(new ruleT{m_rule.get()});
@@ -768,9 +768,9 @@ public:
         m_settings.begin();
 
         const int item_spacing = ImGui::GetStyle().ItemSpacing.x;
-        int preview_index = 0;
+        int space_index = 0;
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + code_image_width() + item_spacing); // For alignment.
-        m_preview.image(rule, preview_index++, m_settings, m_popup, m_message, nullptr);
+        m_spaces.image(rule, space_index++, m_settings, m_popup, m_message, nullptr);
         if (imgui_ItemTooltip_Enabled) {
             const auto text_with_tooltip = [](const char* text, const char* tooltip) {
                 // ImGui::TextDisabled("%s", text);
@@ -846,7 +846,7 @@ public:
             }
 
             const int group_spacing = item_spacing * 3;
-            const int group_width = code_image_width() + item_spacing + m_preview.image_size().x;
+            const int group_width = code_image_width() + item_spacing + m_spaces.image_size().x;
             const int avail_width = ImGui::GetContentRegionAvail().x;
             const int per_line = std::max((avail_width + group_spacing) / (group_width + group_spacing), 1);
             // TODO: workaround for displaying values; doesn't look very nice & the meaning is not obvious...
@@ -896,7 +896,7 @@ public:
                 ImGui::BeginGroup();
                 for (int i = 0; i < cellT::states - 1; ++i) {
                     iso3::increase(rule, group);
-                    m_preview.image(rule, preview_index++, m_settings, m_popup, m_message, &to_rule);
+                    m_spaces.image(rule, space_index++, m_settings, m_popup, m_message, &to_rule);
                     if (ImGui::IsItemVisible()) {
                         const ImVec2 image_min = ImGui::GetItemRectMin();
                         const ImVec2 image_max = ImGui::GetItemRectMax();
@@ -909,14 +909,14 @@ public:
                 iso3::increase(rule, group); // Restored.
             }
 
-            imgui_SetScrollWithUpDown(m_preview.image_size().y * 2 + ImGui::GetStyle().ItemSpacing.y * 3);
+            imgui_SetScrollWithUpDown(m_spaces.image_size().y * 2 + ImGui::GetStyle().ItemSpacing.y * 3);
         }
         ImGui::EndChild();
 
         m_settings.end();
         assert(rule == m_rule.get());
 
-        m_preview.end();
+        m_spaces.end();
         m_popup.end();
         m_message.display_if_present();
         imgui_ItemTooltip_Message.display_if_present();
