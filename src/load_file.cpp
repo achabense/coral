@@ -203,7 +203,7 @@ public:
         ImGui::SameLine();
         // TODO: support record (<</>>).
         ImGui::SetNextItemWidth(ImGui::GetFontSize() * 8);
-        ImGui::InputTextWithHint("Filter", ".txt", input_filter, std::size(input_filter));
+        ImGui::InputTextWithHint("##Filter", ".txt", input_filter, std::size(input_filter));
 
         ImGui::Separator();
 
@@ -290,9 +290,8 @@ public:
 
         ImGui::Separator();
 
-        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemInnerSpacing.x -
-                                ImGui::CalcTextSize("Input").x);
-        if (ImGui::InputTextWithHint("Input", "Folder or file path", input_path, std::size(input_path),
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+        if (ImGui::InputTextWithHint("##Input", "Input path (file or folder)", input_path, std::size(input_path),
                                      ImGuiInputTextFlags_EnterReturnsTrue) &&
             input_path[0] != '\0') {
             try {

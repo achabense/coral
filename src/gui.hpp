@@ -291,8 +291,8 @@ public:
             "Restart  (R    ) - restart all spaces in this window.\n"
             "Pause    (Space) - turn on/off auto mode.\n"
             "Step     (1/2  ) - change the step of auto mode.\n"
-            "Interval (3/4  ) - change the interval of auto mode (1 ~ each frame).");
-        //  "(Try the shortcuts to see how these work.)");
+            "Interval (3/4  ) - change the interval of auto mode (1 ~ each frame).\n\n"
+            "(Try the shortcuts to see how these work.)");
         ImGui::SameLine();
         ImGui::Checkbox("Pause", &pause);
         if (shortcut(ctrl_mode::no_ctrl, ImGuiKey_Space, repeat_mode::no_repeat)) {
@@ -791,9 +791,9 @@ public:
                 "Spaces",
                 "Rules are emulated in the torus spaces.\n\n" // Can be imagined as periodic unit in the infinite space.
                 "For each space:\n"
-                "Hold to pause.\n"
-                "Hold+scroll to change zoom level.\n"
-                "Right-click to open menu.\n\n"
+                "Hold        - pause.\n"
+                "Hold+scroll - change zoom level.\n"
+                "Right-click - open menu (for copying and selecting).\n\n"
                 "To run manually:\n"
                 "S - run by the step (regardless of whether paused).\n"
                 "D - run by 1.\n"
@@ -802,7 +802,7 @@ public:
             text_with_tooltip( // TODO: maintain a file for recently-copied rules (e.g. recently_copied.txt)?
                 "Saving and loading rules",
                 "Rules can be saved and loaded in a plain-text format specific to this program.\n\n"
-                "Open menu for the space to copy the rule. Remember to paste the rule elsewhere.\n\n"
+                "Open menu for the space to copy the rule. (Remember to paste the rule elsewhere.)\n\n"
                 "Use \"Load\" to load rules from files or the clipboard.");
             text_with_tooltip( //
                 "Random-access editing",
@@ -964,8 +964,8 @@ private:
         imgui_ItemTooltip(
             // "(Left/Right/Ctrl+Right work for similar items in other windows.)\n\n"
             "Record for rule editing:\n"
-            "<< (Left      ) - get to the previous rule (~ undoing selection).\n"
-            ">> (Right     ) - get to the next rule.\n"
+            "<< (Left      ) - get to the previous rule (~ undo selection).\n"
+            ">> (Right     ) - get to the next rule (~ redo selection).\n"
             "|> (Ctrl+Right) - get to the last rule.");
         ImGui::SameLine();
         ImGui::BeginDisabled(!m_rule.has_next());
@@ -1021,7 +1021,6 @@ private:
         }
     }
 
-    // !!TODO: tooltips.
     static void select_group(int& to_locate) {
         shortcut_group shortcut{no_active_and_window_focused()};
 
@@ -1039,6 +1038,13 @@ private:
                 sync_from_record();
             }
             ImGui::EndDisabled();
+            imgui_ItemTooltip(
+                "Record for located groups (via \">>>\" and \"Locate\"):\n"
+                "<<  (Left      ) - get to the previous group.\n"
+                ">>> (Right     ) - get to the next group or a random group.\n"
+                "|>  (Ctrl+Right) - get to the last group.\n\n"
+                "\">>>\" will get to random groups when at the end of record.\n\n"
+                "(Try the shortcuts to see how these work.)");
             ImGui::SameLine();
             if (ImGui::SmallButton(">>>") ||
                 shortcut(ctrl_mode::no_ctrl, ImGuiKey_RightArrow, repeat_mode::no_repeat)) {
@@ -1082,6 +1088,10 @@ private:
                 }
             }
         }
+        imgui_ItemTooltip(
+            "Left-click  - change value.\n"
+            "Right-click - use the current value.\n"
+            "Drag        - apply the value to multiple cells.");
         ImGui::SameLine();
         if (ImGui::Button("Locate")) {
             const codeT group_0 = isotropic::get().group_for(iso3::encode(cells))[0];
