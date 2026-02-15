@@ -594,11 +594,11 @@ private:
         if (ImGui::RadioButton("P", m_mode == rand_mode::p)) {
             m_mode = rand_mode::p;
         }
-        imgui_ItemTooltip( // !!TODO: should rewrite. (Where to explain "distance"?)
+        imgui_ItemTooltip( // TODO: improve (only this tooltip uses "distance").
             "(Distance ~ the number of groups with different values.)\n\n"
             "P - the generated rules will have roughly p% groups with different values.\n"
-            "N - the generated rules will have exactly n groups with different values.\n\n"
-            "By default (when not \"locked\"), the distance is relative to the selected rule (for editing). You can lock the rule so rule generation will not be affected by selection (editing).\n\n"
+            "N - the generated rules will have exactly n groups with different values.\n\n" // TODO: idk how to describe v naturally...
+            "By default (when not \"locked\"), the distance is relative to the selected rule (for editing). Use \"Lock\" to lock the relative rule (so rule generation will not be affected by selection).\n\n"
             "(P is suitable for discovering random rules; N is suitable for searching around specific rules.)");
         ImGui::SameLine();
         if (ImGui::RadioButton("N", m_mode == rand_mode::n)) {
@@ -794,8 +794,8 @@ public:
                 "Hold        - pause.\n"
                 "Hold+scroll - change zoom level.\n"
                 "Right-click - open menu (for copying and selecting).\n\n"
-                "To run manually:\n"
-                "S - run by the step (regardless of whether paused).\n"
+                "To run manually (regardless of whether paused):\n"
+                "S - run by the step.\n"
                 "D - run by 1.\n"
                 "F - run by the largest step at each frame.\n\n"
                 "(Also see the tooltip for \"Restart\".)");
@@ -806,12 +806,14 @@ public:
                 "Use \"Load\" to load rules from files or the clipboard.");
             text_with_tooltip( //
                 "Random-access editing",
-                "!!TODO: explain..."
-                "The program is also able to generate random rules. See \"Generate\" for details.");
+                "Isotropic rules must map cell to the same value for all cases in each group, and there is no constraint for values in different groups.\n\n"
+                "For the \"selected rule\" (shown at left), the list below displays all rules with only one group having different value. You can \"edit\" the current rule by selecting rules in the list, and starting from any rule, you can get to any other rule in the set. (So this is effectively random-access editing.)\n\n"
+                "There are 2862 groups, each with 3 possible values, which means there are 3^2862 isotropic rules in total, and 2 * 2862 rules in the list.\n\n"
+                "(The program is also able to generate random rules. See \"Generate\" for details.)");
             text_with_tooltip( //
                 "Preventing strobing effect",
-                "Due to certain value mappings, some rules have large spans of area flashing between different colors.\n\n"
-                "To prevent the strobing effect, you can change the step to e.g. 2, 3, etc. (A multiple of 6 is likely to work for most rules.)");
+                "Rules with certain value mappings may have large spans of area strobing among colors.\n\n"
+                "To prevent the strobing effect, you can change the step to 2, 3, etc. (A multiple of 6 is likely to work for most rules.)");
             text_with_tooltip( //
                 "Scrolling",
                 "To scroll with the scrollbar:\n"
@@ -881,8 +883,8 @@ public:
                 }
                 if (imgui_ItemTooltip_Enabled && group_index == 1) {
                     imgui_ItemTooltip(
-                        "!!TODO: explain..."
-                        "Right-click this (actually anywhere in the window) to locate groups.");
+                        "The first small block (below) represents the value of the selected rule. Other blocks represent the values of \"edited\" rules.\n\n"
+                        "Right-click to locate groups.");
                 } else if (ImGui::BeginItemTooltip()) {
                     for (bool first = true; const codeT c : group) {
                         if (!std::exchange(first, false)) {
