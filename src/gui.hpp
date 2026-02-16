@@ -13,9 +13,6 @@ using iso3::randT;
 using iso3::ruleT;
 using iso3::tileT;
 
-// TODO: not quite useful (cannot track inline global variables)...
-#define static_var static // For tracking non-const static variables.
-
 inline randT& get_rand() {
     static_var randT rand{uint32_t(std::time(0))};
     return rand;
@@ -286,7 +283,7 @@ public:
         if (ImGui::Button("Restart") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_R, repeat_mode::no_repeat)) {
             restart = true;
         }
-        imgui_ItemTooltip(
+        item_tooltip(
             "Restart  (R    ) - restart all spaces in this window.\n"
             "Pause    (Space) - turn on/off auto mode.\n"
             "Step     (1/2  ) - change the step of auto mode.\n"
@@ -361,7 +358,7 @@ public:
     // no-ctrl + s/d/f -> extra step
     // `id` must be unique per group & imgui's id stack (for unique `GetItemID()`).
     void image(const ruleT& rule, const int id, const space_settings& m_settings, shared_popup& m_popup,
-               extra_message& m_message, opt_rule* to_rule = nullptr) {
+               opt_rule* to_rule = nullptr) {
         constexpr ImVec2 border = {1, 1};
         // TODO: is it possible to distinguish items with no id from the background (e.g. IsBgHovered())?
         // ImGui::Dummy(texture_size() + border * 2);
@@ -420,9 +417,9 @@ public:
         }
         if (m_popup.begin_popup(id, /*lock-scroll*/ true)) {
             select |= can_select && ImGui::Selectable("Select");
-            imgui_ItemTooltip("Select for editing.");
+            item_tooltip("Select for editing.");
             copy |= ImGui::Selectable("Copy");
-            imgui_ItemTooltip("Copy the rule.");
+            item_tooltip("Copy the rule.");
             m_popup.end_popup();
         }
         if (can_select && hovered && ctrl) {
@@ -431,11 +428,11 @@ public:
         }
         if (select) {
             to_rule->emplace_ex() = rule;
-            m_message.set("Selected.");
+            set_message("Selected.");
         }
         if (copy) {
             ImGui::SetClipboardText(iso3::to_string(rule).c_str());
-            m_message.set("Copied.");
+            set_message("Copied.");
         }
     }
 
@@ -501,7 +498,7 @@ class rule_generator : no_copy {
 public:
     bool open = false;
     void display_if_open(const char* window_name, const ruleT& rel, space_group& m_spaces, const int starting_id,
-                         shared_popup& m_popup, extra_message& m_message, opt_rule& to_rule) {
+                         shared_popup& m_popup, opt_rule& to_rule) {
         if (!open) {
             return;
         }
@@ -510,7 +507,7 @@ public:
         if (ImGui::Begin(window_name, &open,
                          ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav |
                              ImGuiWindowFlags_AlwaysAutoResize)) {
-            header(rel, m_message);
+            header(rel);
             ImGui::Separator();
 
             m_settings.begin();
@@ -523,7 +520,7 @@ public:
                     // ImGui::Separator();
                 }
                 if (m_pos + i < m_rules.size()) {
-                    m_spaces.image(m_rules.at(m_pos + i), starting_id + i, m_settings, m_popup, m_message, &to_rule);
+                    m_spaces.image(m_rules.at(m_pos + i), starting_id + i, m_settings, m_popup, &to_rule);
                 } else {
                     m_spaces.dummy();
                 }
@@ -534,7 +531,7 @@ public:
     }
 
 private:
-    void header(const ruleT& rel, extra_message& m_message) {
+    void header(const ruleT& rel) {
         assert(m_rules.empty() ? m_pos == 0 : 0 <= m_pos && m_pos < m_rules.size());
         shortcut_group shortcut{no_active_and_window_focused()};
 
@@ -543,7 +540,7 @@ private:
             m_rules.resize_ex(0); // Won't actually free up memory.
             m_pos = 0;
         }
-        // imgui_ItemTooltip("When there are too many rules, the oldest rules will be cleared automatically.");
+        // item_tooltip("When there are too many rules, the oldest rules will be cleared automatically.");
         ImGui::EndDisabled();
         ImGui::SameLine();
         ImGui::BeginDisabled(m_pos == 0);
@@ -552,7 +549,7 @@ private:
             m_pos = std::max(0, m_pos - page_size);
         }
         ImGui::EndDisabled();
-        imgui_ItemTooltip(
+        item_tooltip(
             "For rule generation:\n"
             "<<  (Left      ) - get to the previous page.\n"
             ">>> (Right     ) - get to the next page or generate a new page.\n"
@@ -594,7 +591,7 @@ private:
         if (ImGui::RadioButton("P", m_mode == rand_mode::p)) {
             m_mode = rand_mode::p;
         }
-        imgui_ItemTooltip( // TODO: improve (only this tooltip uses "distance").
+        item_tooltip( // TODO: improve (only this tooltip uses "distance").
             "(Distance ~ the number of groups with different values.)\n\n"
             "P - the generated rules will have roughly p% groups with different values.\n"
             "N - the generated rules will have exactly n groups with different values.\n\n" // TODO: idk how to describe v naturally...
@@ -613,12 +610,12 @@ private:
         if (bool locked = bool(m_rel); ImGui::Checkbox("Lock", &locked)) {
             if (!m_rel) {
                 m_rel.emplace_ex() = rel;
-                m_message.set("Locked.");
+                set_message("Locked.");
             } else {
                 m_rel.reset();
             }
         }
-        imgui_ItemTooltip("See the tooltip for \"P\" for details.");
+        item_tooltip("See the tooltip for \"P\" for details.");
 
         ImGui::Separator();
         m_settings.header();
@@ -637,7 +634,7 @@ class rule_loader : no_copy {
 public:
     bool open = false;
     void display_if_open(const char* window_name, space_group& m_spaces, const int starting_id, shared_popup& m_popup,
-                         extra_message& m_message, opt_rule& to_rule) {
+                         opt_rule& to_rule) {
         if (!open) {
             return;
         }
@@ -646,7 +643,7 @@ public:
         if (ImGui::Begin(window_name, &open,
                          ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav |
                              ImGuiWindowFlags_AlwaysAutoResize)) {
-            header(m_message);
+            header();
             ImGui::Separator();
             if (std::exchange(reset_scroll, false)) {
                 ImGui::SetNextWindowScroll({0, 0});
@@ -667,7 +664,7 @@ public:
                     } else if (i != 0) {
                         // ImGui::Separator();
                     }
-                    m_spaces.image(m_rules[i], starting_id + i, m_settings, m_popup, m_message, &to_rule);
+                    m_spaces.image(m_rules[i], starting_id + i, m_settings, m_popup, &to_rule);
                 }
                 m_settings.end();
 
@@ -679,7 +676,7 @@ public:
     }
 
 private:
-    void header(extra_message& m_message) {
+    void header() {
         shortcut_group shortcut{no_active_and_window_focused()};
 
         ImGui::BeginDisabled(m_rules.empty());
@@ -694,18 +691,18 @@ private:
         // TODO: support multiple lists (instead of replacing the existing one).
         if (imgui_DoubleClickButton("Paste") || shortcut(ctrl_mode::ctrl, ImGuiKey_V, repeat_mode::no_repeat)) {
             const char* str = ImGui::GetClipboardText(); // May be nullptr.
-            extract_rules(str ? str : "", m_message);
+            extract_rules(str ? str : "");
         }
-        imgui_ItemTooltip("Load rules from the clipboard. Shortcut: Ctrl+V.");
+        item_tooltip("Load rules from the clipboard. Shortcut: Ctrl+V.");
         ImGui::SameLine();
         if (imgui_DoubleClickButton("Open") /*|| shortcut(ctrl_mode::ctrl, ImGuiKey_O, repeat_mode::no_repeat)*/) {
             m_loader.open = true;
         }
-        imgui_ItemTooltip("Load rules from files.");
+        item_tooltip("Load rules from files.");
         if (m_loader.open) /*micro optimization*/ {
             std::string str{};
-            if (m_loader.display_if_open(m_message, str, 1024 * 1024)) {
-                extract_rules(str, m_message);
+            if (m_loader.display_if_open(str, 1024 * 1024)) {
+                extract_rules(str);
             }
         }
 
@@ -713,7 +710,7 @@ private:
         m_settings.header();
     }
 
-    void extract_rules(std::string_view str, extra_message& m_message, int reserve = 8, int max = 100) {
+    void extract_rules(std::string_view str, int reserve = 8, int max = 100) {
         std::vector<ruleT> rules{};
         rules.reserve(reserve);
         for (int i = 0; i < max; ++i) {
@@ -727,9 +724,9 @@ private:
             reset_scroll = true;
             // TODO: slightly wasteful. (`extra_message` stores std::string internally.)
             const int num = m_rules.size();
-            m_message.set(num == 1 ? "1 rule." : (std::to_string(num) + " rules.").c_str());
+            set_message(num == 1 ? "1 rule." : (std::to_string(num) + " rules.").c_str());
         } else {
-            m_message.set("No rules.");
+            set_message("No rules.");
         }
     }
 };
@@ -747,7 +744,6 @@ class main_data : no_copy {
 
     space_group m_spaces{};
     shared_popup m_popup{};
-    extra_message m_message{};
 
 public:
     void display() {
@@ -759,8 +755,8 @@ public:
         ImGui::Separator();
 
         // TODO: using fixed names for convenience (technically should be specified per object).
-        m_loader.display_if_open("Load", m_spaces, 20000, m_popup, m_message, to_rule);
-        m_generator.display_if_open("Generate", m_rule.get(), m_spaces, 10000, m_popup, m_message, to_rule);
+        m_loader.display_if_open("Load", m_spaces, 20000, m_popup, to_rule);
+        m_generator.display_if_open("Generate", m_rule.get(), m_spaces, 10000, m_popup, to_rule);
 
         // TODO: slightly wasteful. (Can reuse memory by making `record_for::get()` return non-const ref, but that's risky.)
         std::unique_ptr<ruleT> temp_rule(new ruleT{m_rule.get()});
@@ -770,14 +766,14 @@ public:
         const int item_spacing = ImGui::GetStyle().ItemSpacing.x;
         int space_index = 0;
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + code_image_width() + item_spacing); // For alignment.
-        m_spaces.image(rule, space_index++, m_settings, m_popup, m_message, nullptr);
-        if (imgui_ItemTooltip_Enabled) {
+        m_spaces.image(rule, space_index++, m_settings, m_popup, nullptr);
+        if (item_tooltip_enabled) {
             const auto text_with_tooltip = [](const char* text, const char* tooltip) {
                 // ImGui::TextDisabled("%s", text);
                 ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
                 ImGui::TextUnformatted(text, text + std::strlen(text));
                 ImGui::PopStyleColor();
-                imgui_ItemTooltip(tooltip, false /*no highlight*/);
+                item_tooltip(tooltip, false /*no highlight*/);
             };
 
             ImGui::SameLine(/*0, item_spacing * 3*/);
@@ -881,8 +877,8 @@ public:
                     // More accurate than `ImGui::SetScrollHereY(0)`.
                     ImGui::SetScrollFromPosY(ImGui::GetItemRectMin().y - ImGui::GetWindowPos().y, 0);
                 }
-                if (imgui_ItemTooltip_Enabled && group_index == 1) {
-                    imgui_ItemTooltip(
+                if (item_tooltip_enabled && group_index == 1) {
+                    item_tooltip(
                         "The first small block (below) represents the value of the selected rule. Other blocks represent the values of \"edited\" rules.\n\n"
                         "Right-click to locate groups.");
                 } else if (ImGui::BeginItemTooltip()) {
@@ -898,7 +894,7 @@ public:
                 ImGui::BeginGroup();
                 for (int i = 0; i < cellT::states - 1; ++i) {
                     iso3::increase(rule, group);
-                    m_spaces.image(rule, space_index++, m_settings, m_popup, m_message, &to_rule);
+                    m_spaces.image(rule, space_index++, m_settings, m_popup, &to_rule);
                     if (ImGui::IsItemVisible()) {
                         const ImVec2 image_min = ImGui::GetItemRectMin();
                         const ImVec2 image_max = ImGui::GetItemRectMax();
@@ -920,32 +916,33 @@ public:
 
         m_spaces.end();
         m_popup.end();
-        m_message.display_if_present();
-        imgui_ItemTooltip_Message.display_if_present();
+
+        // TODO: working but technically should be called in a "wider" context.
+        set_message_obj.display_if_present();
     }
 
 private:
     void header() {
         shortcut_group shortcut{no_active_and_window_focused()};
 
-        ImGui::Checkbox("Tooltips", &imgui_ItemTooltip_Enabled);
+        ImGui::Checkbox("Tooltips", &item_tooltip_enabled);
         // TODO: should take part in filtering.
         if (!ImGui::IsAnyItemActive() && test_key(ctrl_mode::no_ctrl, ImGuiKey_H, repeat_mode::no_repeat)) {
-            imgui_ItemTooltip_Enabled = !imgui_ItemTooltip_Enabled;
+            item_tooltip_enabled = !item_tooltip_enabled;
         }
-        imgui_ItemTooltip(
+        item_tooltip(
             "Turn on/off tooltips. Shortcut: H (works everywhere).\n\n"
             "You can press Ctrl+C to copy the text in each tooltip.");
         //  "(Try Ctrl+C to see whether the clipboard works. The program relies on the clipboard for saving rules.)");
         ImGui::SameLine();
         ImGui::Checkbox("Load", &m_loader.open);
-        imgui_ItemTooltip("Load rules from files or the clipboard.");
+        item_tooltip("Load rules from files or the clipboard.");
         ImGui::SameLine();
         ImGui::Checkbox("Generate", &m_generator.open);
-        imgui_ItemTooltip("Generate random rules.");
+        item_tooltip("Generate random rules.");
         ImGui::SameLine();
         const bool to_zero = imgui_DoubleClickButton("Zero");
-        imgui_ItemTooltip(
+        item_tooltip(
             "(Purple buttons like these require double-clicking.)\n\n"
             "For rule editing (set the rule to the following rules):\n"
             "Zero     - the all-0 rule, i.e. the rule that maps cell to 0 in all cases.\n"
@@ -963,7 +960,7 @@ private:
                              shortcut(ctrl_mode::no_ctrl, ImGuiKey_LeftArrow, repeat_mode::no_repeat) ||
                              shortcut(ctrl_mode::ctrl, ImGuiKey_Z, repeat_mode::no_repeat);
         ImGui::EndDisabled();
-        imgui_ItemTooltip(
+        item_tooltip(
             // "(Left/Right/Ctrl+Right work for similar items in other windows.)\n\n"
             "Record for rule editing:\n"
             "<< (Left      ) - get to the previous rule (~ undo selection).\n"
@@ -987,10 +984,10 @@ private:
             set_framerate();
             m_popup.end_popup();
         }
-        imgui_ItemTooltip("Right-click to set frame rate.");
+        item_tooltip("Right-click to set frame rate.");
 
         // if (to_zero || to_identity || to_life) {
-        //     m_message.set("Selected.");
+        //     set_message("Selected.");
         // }
         if (to_zero) {
             assert(!to_rule);
@@ -1040,7 +1037,7 @@ private:
                 sync_from_record();
             }
             ImGui::EndDisabled();
-            imgui_ItemTooltip(
+            item_tooltip(
                 "Record for located groups (via \">>>\" and \"Locate\"):\n"
                 "<<  (Left      ) - get to the previous group.\n"
                 ">>> (Right     ) - get to the next group or a random group.\n"
@@ -1090,7 +1087,7 @@ private:
                 }
             }
         }
-        imgui_ItemTooltip(
+        item_tooltip(
             "Left-click  - change value.\n"
             "Right-click - use the current value.\n"
             "Drag        - apply the value to multiple cells.");

@@ -177,9 +177,6 @@ public:
     }
 };
 
-// TODO: define globally? `extra_message&` affects too many functions...
-// inline extra_message m_message{};
-
 class file_loader : no_copy {
     std::shared_ptr<void> m_impl{}; // Unique ownership; just for simpler code.
 
@@ -189,16 +186,21 @@ public:
     // Modal window.
     // true ~ loaded successfully (`data` may become non-empty even if failed); doesn't care about utf8-boundary.
     // (Callers should only deal with successful case.)
-    // TODO: the current msg handling works but is somewhat messy.
-    bool display_if_open(extra_message& m_message, std::string& data, int max_size = 1024 * 1024);
+    bool display_if_open(std::string& data, int max_size = 1024 * 1024);
 };
 
-// TODO: temp workaround for tooltips.
-// (Not general enough to be named imgui_Abcd & should prevent inline var if possible & a separate message (to prevent affecting existing functions) is especially terrible...)
-inline extra_message imgui_ItemTooltip_Message{};
-inline bool imgui_ItemTooltip_Enabled = true;
-inline void imgui_ItemTooltip(const char* tooltip, bool highlight = true) {
-    if (!imgui_ItemTooltip_Enabled) {
+// TODO: should use fewer global vars.
+#define inline_var inline // For tracking global inline variables.
+#define static_var static // For tracking non-const static variables.
+
+// TODO: workaround for message and tooltips.
+// (The current msg handling works but is somewhat messy... Lacks convention.)
+inline_var extra_message set_message_obj{};
+inline void set_message(const char* s, double t = 0.5) { set_message_obj.set(s, t); }
+
+inline_var bool item_tooltip_enabled = true;
+inline void item_tooltip(const char* tooltip, bool highlight = true) {
+    if (!item_tooltip_enabled) {
         return;
     }
     if (highlight) {
@@ -218,7 +220,7 @@ inline void imgui_ItemTooltip(const char* tooltip, bool highlight = true) {
                                                       IM_COL32(255, 255, 255, 32));
             if (ImGui::IsKeyPressed(ImGuiKey_C, false)) {
                 ImGui::SetClipboardText(tooltip);
-                imgui_ItemTooltip_Message.set("Copied.");
+                set_message("Copied.");
             }
         }
         ImGui::EndTooltip();

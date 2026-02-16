@@ -151,10 +151,6 @@ class file_selector : no_copy {
     // (Can be shared from callers, but that's unnecessarily complex.)
     shared_popup m_popup{};
 
-    // TODO: whether to define locally?
-    // (Will disappear earlier if the window is closed immediately, but that's extremely rare.)
-    // extra_message m_message{};
-
     char input_filter[40]{};
     char input_path[220]{};
     bool reset_scroll = false;
@@ -170,22 +166,22 @@ public:
 
     bool valid() const { return m_current.valid(); }
 
-    void display(extra_message& m_message, pathT& select_file) {
+    void display(pathT& select_file) {
         assert(valid() && !m_home.empty());
         const auto on_set_dir = [&](const bool s) {
             if (s) {
                 reset_scroll = true;
             } else {
-                m_message.set(msg_failed);
+                set_message(msg_failed);
             }
             return s;
         };
         const auto copy_path = [&](const pathT& path, const char* str = nullptr) {
             try {
                 ImGui::SetClipboardText(str ? str : cpp17_u8string_maythrow(path).c_str());
-                m_message.set("Copied.");
+                set_message("Copied.");
             } catch (...) {
-                m_message.set(msg_failed);
+                set_message(msg_failed);
             }
         };
 
@@ -197,7 +193,7 @@ public:
 
         if (imgui_DoubleClickButton("Refresh")) {
             if (on_set_dir(m_current.refresh())) {
-                m_message.set("Refreshed.");
+                set_message("Refreshed.");
             }
         }
         ImGui::SameLine();
@@ -218,7 +214,7 @@ public:
                 }
                 m_popup.end_popup();
             }
-            imgui_ItemTooltip("Right-click to copy path.");
+            item_tooltip("Right-click to copy path.");
         }
 
         ImGui::Separator();
@@ -263,7 +259,7 @@ public:
                     sel = &entry;
                 }
                 if (std::exchange(first, false)) {
-                    imgui_ItemTooltip("Right-click to copy path.");
+                    item_tooltip("Right-click to copy path.");
                 }
                 if (ImGui::IsItemHovered()) {
                     m_popup.open_on_idle_rclick(id);
@@ -308,10 +304,10 @@ public:
                         input_path[0] = '\0';
                     }
                 } else {
-                    m_message.set(!std::filesystem::exists(status) ? "Path doesn't exist." : msg_failed);
+                    set_message(!std::filesystem::exists(status) ? "Path doesn't exist." : msg_failed);
                 }
             } catch (...) {
-                m_message.set(msg_failed);
+                set_message(msg_failed);
             }
         }
 
@@ -320,7 +316,7 @@ public:
     }
 };
 
-bool file_loader::display_if_open(extra_message& m_message, std::string& data, const int max_size) {
+bool file_loader::display_if_open(std::string& data, const int max_size) {
     if (!open) {
         return false;
     }
@@ -332,7 +328,7 @@ bool file_loader::display_if_open(extra_message& m_message, std::string& data, c
         // TODO: improve behavior (disable the open button afterwards, or support input-only mode.)
         // (-> "Paste (path)" button ~ treat clipboard text as file path and try to load?)
         open = false;
-        m_message.set(msg_failed);
+        set_message(msg_failed);
         return false;
     }
     bool loaded = false;
@@ -347,12 +343,12 @@ bool file_loader::display_if_open(extra_message& m_message, std::string& data, c
                                ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoResize)) {
         // Modal window also disables scrolling.
         pathT select{};
-        selector.display(m_message, select);
+        selector.display(select);
         if (!select.empty()) {
             if (load_file(select, data, max_size)) {
                 loaded = true;
             } else {
-                m_message.set(msg_failed);
+                set_message(msg_failed);
             }
         }
         ImGui::EndPopup();
