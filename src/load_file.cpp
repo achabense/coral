@@ -185,8 +185,7 @@ public:
             }
         };
 
-        m_popup.set_popup_id("Popup");
-        m_popup.begin();
+        m_popup.begin("Popup");
         // Workaround for extra x-clip (for e.g. TextUnformatted and Selectable).
         // TODO: use ImDrawList::Push/PopPushClipRect instead?
         ImGui::BeginChild("Clip");

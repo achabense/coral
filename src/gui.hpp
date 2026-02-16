@@ -332,13 +332,16 @@ class space_group : no_copy {
         bool skip_tick = false;
     };
 
+    shared_popup m_popup{};
     std::unordered_map<int /*id*/, blobT> m_blobs{};
     const tileT m_init{iso3::rand_tile({256, 196}, randT{0})};
 
     ImVec2 texture_size() const { return ImVec2(m_init.size().x, m_init.size().y); }
 
 public:
-    void begin() {
+    // TODO: whether to begin/end popup?
+    void begin(const char* str_id) {
+        m_popup.begin(str_id);
         assert(std::ranges::all_of(m_blobs, [](const auto& blob) { return !blob.second.active; }));
     }
     void end() {
@@ -348,7 +351,10 @@ public:
         // std::erase_if(map) uses the same term, but it's defined by equivalent behavior (which allows modification).
         // https://eel.is/c++draft/unord.map.erasure
         std::erase_if(m_blobs, [](auto& blob) { return !std::exchange(blob.second.active, false); });
+        m_popup.end();
     }
+
+    shared_popup& popup() { return m_popup; }
 
     // (Shortcuts work when hovered && this-or-none-active.)
     // ctrl + left-click -> select
@@ -356,9 +362,8 @@ public:
     // ctrl/press + scroll -> change zoom level
     // right-click -> op menu (select/copy)
     // no-ctrl + s/d/f -> extra step
-    // `id` must be unique per group & imgui's id stack (for unique `GetItemID()`).
-    void image(const ruleT& rule, const int id, const space_settings& m_settings, shared_popup& m_popup,
-               opt_rule* to_rule = nullptr) {
+    // `id` (also used as popup id) must be unique per group & imgui's id stack (for unique `GetItemID()`).
+    void image(const ruleT& rule, const int id, const space_settings& m_settings, opt_rule* to_rule = nullptr) {
         constexpr ImVec2 border = {1, 1};
         // TODO: is it possible to distinguish items with no id from the background (e.g. IsBgHovered())?
         // ImGui::Dummy(texture_size() + border * 2);
@@ -406,8 +411,6 @@ public:
             display_in_tooltip(texture, texture_size(), ImGui::GetMousePos() - min - border,
                                ctrl || pressed /*-> scroll to change zoom level*/);
         }
-        // TODO: working but need to use a separate id for popup in the future.
-        // (Or define a member popup?)
         draw.AddRect(min, max, hovered || m_popup.opened(id) ? IM_COL32_WHITE : ImGui::GetColorU32(ImGuiCol_Border));
 
         const bool can_select = to_rule;
@@ -498,7 +501,7 @@ class rule_generator : no_copy {
 public:
     bool open = false;
     void display_if_open(const char* window_name, const ruleT& rel, space_group& m_spaces, const int starting_id,
-                         shared_popup& m_popup, opt_rule& to_rule) {
+                         opt_rule& to_rule) {
         if (!open) {
             return;
         }
@@ -520,7 +523,7 @@ public:
                     // ImGui::Separator();
                 }
                 if (m_pos + i < m_rules.size()) {
-                    m_spaces.image(m_rules.at(m_pos + i), starting_id + i, m_settings, m_popup, &to_rule);
+                    m_spaces.image(m_rules.at(m_pos + i), starting_id + i, m_settings, &to_rule);
                 } else {
                     m_spaces.dummy();
                 }
@@ -633,8 +636,7 @@ class rule_loader : no_copy {
 
 public:
     bool open = false;
-    void display_if_open(const char* window_name, space_group& m_spaces, const int starting_id, shared_popup& m_popup,
-                         opt_rule& to_rule) {
+    void display_if_open(const char* window_name, space_group& m_spaces, const int starting_id, opt_rule& to_rule) {
         if (!open) {
             return;
         }
@@ -664,7 +666,7 @@ public:
                     } else if (i != 0) {
                         // ImGui::Separator();
                     }
-                    m_spaces.image(m_rules[i], starting_id + i, m_settings, m_popup, &to_rule);
+                    m_spaces.image(m_rules[i], starting_id + i, m_settings, &to_rule);
                 }
                 m_settings.end();
 
@@ -743,20 +745,19 @@ class main_data : no_copy {
     rule_generator m_generator{};
 
     space_group m_spaces{};
-    shared_popup m_popup{};
+    shared_popup& m_popup = m_spaces.popup(); // Shared from `m_spaces`. (Misc popups use negative id.)
 
 public:
     void display() {
-        m_popup.set_popup_id("Popup");
-        m_popup.begin();
-        m_spaces.begin();
+        // m_popup.begin();
+        m_spaces.begin("Popup");
 
         header();
         ImGui::Separator();
 
         // TODO: using fixed names for convenience (technically should be specified per object).
-        m_loader.display_if_open("Load", m_spaces, 20000, m_popup, to_rule);
-        m_generator.display_if_open("Generate", m_rule.get(), m_spaces, 10000, m_popup, to_rule);
+        m_loader.display_if_open("Load", m_spaces, 20000, to_rule);
+        m_generator.display_if_open("Generate", m_rule.get(), m_spaces, 10000, to_rule);
 
         // TODO: slightly wasteful. (Can reuse memory by making `record_for::get()` return non-const ref, but that's risky.)
         std::unique_ptr<ruleT> temp_rule(new ruleT{m_rule.get()});
@@ -766,7 +767,7 @@ public:
         const int item_spacing = ImGui::GetStyle().ItemSpacing.x;
         int space_index = 0;
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + code_image_width() + item_spacing); // For alignment.
-        m_spaces.image(rule, space_index++, m_settings, m_popup, nullptr);
+        m_spaces.image(rule, space_index++, m_settings, nullptr);
         if (item_tooltip_enabled) {
             const auto text_with_tooltip = [](const char* text, const char* tooltip) {
                 // ImGui::TextDisabled("%s", text);
@@ -894,7 +895,7 @@ public:
                 ImGui::BeginGroup();
                 for (int i = 0; i < cellT::states - 1; ++i) {
                     iso3::increase(rule, group);
-                    m_spaces.image(rule, space_index++, m_settings, m_popup, &to_rule);
+                    m_spaces.image(rule, space_index++, m_settings, &to_rule);
                     if (ImGui::IsItemVisible()) {
                         const ImVec2 image_min = ImGui::GetItemRectMin();
                         const ImVec2 image_max = ImGui::GetItemRectMax();
@@ -915,7 +916,7 @@ public:
         assert(rule == m_rule.get());
 
         m_spaces.end();
-        m_popup.end();
+        // m_popup.end();
 
         // TODO: working but technically should be called in a "wider" context.
         set_message_obj.display_if_present();

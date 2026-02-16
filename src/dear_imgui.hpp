@@ -72,10 +72,12 @@ class shared_popup : no_copy {
     bool activated = false;
 
 public:
-    // Must not change after assigned.
-    void set_popup_id(const char* str_id) { popup_id = ImGui::GetID(str_id); }
-
-    void begin() { activated = false; }
+    void begin(const char* str_id) {
+        if (popup_id == 0) {
+            popup_id = ImGui::GetID(str_id);
+        }
+        activated = false;
+    }
     void end() {
         if (!activated) {
             owner_id.reset();
