@@ -987,9 +987,9 @@ private:
         }
         item_tooltip("Right-click to set frame rate.");
 
-        // if (to_zero || to_identity || to_life) {
-        //     set_message("Selected.");
-        // }
+        if (to_zero || to_identity || to_life) {
+            set_message("Selected.");
+        }
         if (to_zero) {
             assert(!to_rule);
             iso3::to_zero(to_rule.emplace_ex());

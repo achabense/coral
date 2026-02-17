@@ -394,24 +394,17 @@ namespace iso3 {
         }
 
         inline std::string_view extract_string(std::string_view& str) {
-            while (str.size() >= required_size) {
-                if (!is_char(str[0])) {
-                    str.remove_prefix(1);
-                } else {
-                    int j = 1;
-                    while (j < required_size && is_char(str[j])) {
-                        ++j;
-                    }
-                    if (j == required_size) {
-                        const char* pos = str.data();
-                        str.remove_prefix(required_size);
-                        return std::string_view(pos, required_size);
-                    } else {
-                        str.remove_prefix(j);
-                    }
-                }
+            const char *pos = str.data(), *end = pos + str.size();
+            int len = 0;
+            while (len < required_size && pos != end) {
+                len = is_char(*pos++) ? len + 1 : 0;
             }
-            return {};
+            str = {pos, end};
+            if (len == required_size) {
+                return {pos - required_size, pos};
+            } else {
+                return {};
+            }
         }
     } // namespace _misc_
 
