@@ -176,7 +176,7 @@ public:
             }
             return s;
         };
-        const auto copy_path = [&](const pathT& path, const char* str = nullptr) {
+        const auto copy_path = [&](const pathT& path, /*micro optimization*/ const char* str = nullptr) {
             try {
                 ImGui::SetClipboardText(str ? str : cpp17_u8string_maythrow(path).c_str());
                 set_message("Copied.");
@@ -202,19 +202,15 @@ public:
 
         ImGui::Separator();
 
-        {
-            // ImGui::TextUnformatted(m_current.str().c_str());
-            const auto& str = m_current.str(); // Micro optimization.
-            ImGui::TextUnformatted(str.data(), str.data() + str.size());
-            m_popup.open_for_text(-50, ImGui::IsItemHovered());
-            if (m_popup.begin_popup(-50, true)) {
-                if (ImGui::Selectable("Copy path")) {
-                    copy_path(m_current.path(), str.c_str());
-                }
-                m_popup.end_popup();
+        imgui_Text(m_current.str());
+        m_popup.open_for_text(-50, ImGui::IsItemHovered());
+        if (m_popup.begin_popup(-50, true)) {
+            if (ImGui::Selectable("Copy path")) {
+                copy_path(m_current.path(), m_current.str().c_str());
             }
-            item_tooltip("Right-click to copy path.");
+            m_popup.end_popup();
         }
+        item_tooltip("Right-click to copy path.");
 
         ImGui::Separator();
 
@@ -246,9 +242,7 @@ public:
                     continue;
                 }
                 if (!entry.is_file) {
-                    // ImGui::TextUnformatted("|-");
-                    constexpr const char* str = "|-"; // Micro optimization.
-                    ImGui::TextUnformatted(str, str + 2);
+                    imgui_Text("|-", 2);
                     ImGui::SameLine();
                 }
                 const int id = extra_id++;

@@ -412,6 +412,7 @@ public:
                                ctrl || pressed /*-> scroll to change zoom level*/);
         }
         draw.AddRect(min, max, hovered || m_popup.opened(id) ? IM_COL32_WHITE : ImGui::GetColorU32(ImGuiCol_Border));
+        // draw.AddRect(min, max, ImGui::GetColorU32(hovered || m_popup.opened(id) ? ImGuiCol_Text : ImGuiCol_Border));
 
         const bool can_select = to_rule;
         bool select = false, copy = op == 'C';
@@ -787,7 +788,7 @@ public:
                 set_message("Applied.");
             }
             ImGui::SameLine();
-            ImGui::TextUnformatted("(Value filter)");
+            imgui_Text("(Value filter)");
             for (int f = 0; f < 3; ++f) {
                 for (int t = 0; t < 3; ++t) {
                     if (t != 0) {
@@ -803,10 +804,7 @@ public:
         }
         if (item_tooltip_enabled) {
             const auto text_with_tooltip = [](const char* text, const char* tooltip) {
-                // ImGui::TextDisabled("%s", text);
-                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-                ImGui::TextUnformatted(text, text + std::strlen(text));
-                ImGui::PopStyleColor();
+                imgui_TextDisabled(text);
                 item_tooltip(tooltip, false /*no highlight*/);
             };
 

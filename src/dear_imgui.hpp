@@ -45,6 +45,15 @@ extern void imgui_SliderIntEx(float slider_width, const char* label, int& val, i
 extern bool imgui_SelectableEx(const char* str_id, int extra_id, const char* label, bool selected = false,
                                ImGuiSelectableFlags flags = 0 /*, ImVec2 size = {}*/);
 
+inline void imgui_Text(const char* str, int len) { ImGui::TextUnformatted(str, str + len); }
+inline void imgui_Text(std::string_view str) { ImGui::TextUnformatted(str.data(), str.data() + str.size()); }
+inline void imgui_TextDisabled(std::string_view str) {
+    // ImGui::TextDisabled("%s", text);
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    ImGui::TextUnformatted(str.data(), str.data() + str.size());
+    ImGui::PopStyleColor();
+}
+
 // Those defined in "imgui_internal.h" cannot be declared for use here (as they are inline functions).
 inline ImVec2 imgui_Floor(ImVec2 a) { return {std::floor(a.x), std::floor(a.y)}; }
 inline ImVec2 imgui_Ceil(ImVec2 a) { return {std::ceil(a.x), std::ceil(a.y)}; }
@@ -97,13 +106,14 @@ public:
     bool opened(int id) const { return owner_id == id; }
 
     void button_to_open(const char* label, int id) {
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImGui::GetStyleColorVec4(ImGuiCol_ButtonHovered));
+        // ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImGui::GetStyleColorVec4(ImGuiCol_ButtonHovered));
         ImGui::PushStyleColor(ImGuiCol_Button,
                               ImGui::GetStyleColorVec4(opened(id) ? ImGuiCol_ButtonHovered : ImGuiCol_Button));
         if (ImGui::Button(label)) {
             open(id);
         }
-        ImGui::PopStyleColor(2);
+        ImGui::PopStyleColor();
+        // ImGui::PopStyleColor(2);
     }
 
     // Workaround to enable popup when an input field is active but not held.
