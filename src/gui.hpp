@@ -747,6 +747,11 @@ class main_data : no_copy {
     space_group m_spaces{};
     shared_popup& m_popup = m_spaces.popup(); // Shared from `m_spaces`. (Misc popups use negative id.)
 
+    // TODO: support grouping / sorting / (more generalized) filtering / value-constraints etc.
+    bool misc_skip[3][3]{};
+    bool misc_temp[3][3]{};
+    bool skip(const codeT code, const cellT v) const { return misc_skip[iso3::decode(code, 4 /*center*/)][v]; }
+
 public:
     void display() {
         // m_popup.begin();
@@ -768,6 +773,34 @@ public:
         int space_index = 0;
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + code_image_width() + item_spacing); // For alignment.
         m_spaces.image(rule, space_index++, m_settings, nullptr);
+
+        ImGui::SameLine();
+        ImGui::BeginGroup();
+        m_popup.button_to_open("Misc", -300);
+        item_tooltip("Experimental features.");
+        if (m_popup.begin_popup(-300, true)) {
+            if (ImGui::IsWindowAppearing()) {
+                std::memcpy(misc_temp, misc_skip, sizeof(misc_skip));
+            }
+            if (imgui_DoubleClickButton("Apply")) {
+                std::memcpy(misc_skip, misc_temp, sizeof(misc_skip));
+                set_message("Applied.");
+            }
+            ImGui::SameLine();
+            ImGui::TextUnformatted("(Value filter)");
+            for (int f = 0; f < 3; ++f) {
+                for (int t = 0; t < 3; ++t) {
+                    if (t != 0) {
+                        ImGui::SameLine();
+                    }
+                    const char label[]{char('0' + f), '-', '>', char('0' + t), '\0'};
+                    bool n = !misc_temp[f][t];
+                    ImGui::Checkbox(label, &n);
+                    misc_temp[f][t] = !n;
+                }
+            }
+            m_popup.end_popup();
+        }
         if (item_tooltip_enabled) {
             const auto text_with_tooltip = [](const char* text, const char* tooltip) {
                 // ImGui::TextDisabled("%s", text);
@@ -777,8 +810,6 @@ public:
                 item_tooltip(tooltip, false /*no highlight*/);
             };
 
-            ImGui::SameLine(/*0, item_spacing * 3*/);
-            ImGui::BeginGroup();
             text_with_tooltip( // TODO: support opening link in browser.
                 "About this program",
                 "Coral v1.0.0 WIP (c) 2025-2026 achabense (GitHub username)\n\n"
@@ -802,7 +833,7 @@ public:
                 "Open menu for the space to copy the rule. (Remember to paste the rule elsewhere.)\n\n"
                 "Use \"Load\" to load rules from files or the clipboard.");
             text_with_tooltip( //
-                "Random-access editing",
+                "Rule editing",
                 "Isotropic rules must map cell to the same value for all cases in each group, and there is no constraint for values in different groups.\n\n"
                 "For the \"selected rule\" (shown at left), the list below displays all rules with only one group having different value. You can \"edit\" the current rule by selecting rules in the list, and starting from any rule, you can get to any other rule in the set. (So this is effectively random-access editing.)\n\n"
                 "There are 2862 groups, each with 3 possible values, which means there are 3^2862 isotropic rules in total, and 2 * 2862 rules in the list.\n\n"
@@ -821,8 +852,8 @@ public:
                 "Down      - scroll down.\n"
                 "Ctrl+Up   - scroll to top.\n"
                 "Ctrl+Down - scroll to bottom.");
-            ImGui::EndGroup();
         }
+        ImGui::EndGroup();
 
         ImGui::Separator();
 
@@ -861,6 +892,12 @@ public:
             // TODO: -> separate pages (instead of a single scrollable page)?
             int group_index = 0;
             for (const auto& group : isotropic::get().groups()) {
+                const codeT group_0 = group[0];
+                if (skip(group_0, rule[group_0])) {
+                    space_index += cellT::states - 1;
+                    continue;
+                }
+
                 if (group_index % per_line != 0) {
                     ImGui::SameLine(0, group_spacing);
                 } else if (group_index != 0) {
@@ -868,7 +905,6 @@ public:
                 }
                 ++group_index;
 
-                const codeT group_0 = group[0];
                 code_image(group_0);
                 // TODO: where to open popup? (Window bg or group button?)
                 // if (ImGui::IsItemHovered()) { m_popup.open_on_idle_rclick(-100); }

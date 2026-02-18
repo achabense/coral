@@ -96,6 +96,16 @@ public:
     bool opened() const { return owner_id.has_value(); }
     bool opened(int id) const { return owner_id == id; }
 
+    void button_to_open(const char* label, int id) {
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImGui::GetStyleColorVec4(ImGuiCol_ButtonHovered));
+        ImGui::PushStyleColor(ImGuiCol_Button,
+                              ImGui::GetStyleColorVec4(opened(id) ? ImGuiCol_ButtonHovered : ImGuiCol_Button));
+        if (ImGui::Button(label)) {
+            open(id);
+        }
+        ImGui::PopStyleColor(2);
+    }
+
     // Workaround to enable popup when an input field is active but not held.
     // Must work in combination with some hover test & should not apply to input field itself.
     // (Normally `!IsAnyitemActive()` is enough, but when an input field is accepting input (even if not held), it will also report active id, and it's strange to disable popup in this case. `IsItemHovered()` (for other items) and `IsWindowHovered()` will report false normally when the input field is actually held.)
@@ -113,7 +123,7 @@ public:
         if (hovered || opened(id)) {
             const ImVec2 min = ImGui::GetItemRectMin();
             const ImVec2 max = ImGui::GetItemRectMax();
-            ImGui::GetWindowDrawList()->AddLine(ImVec2(min.x, max.y), max, IM_COL32_WHITE);
+            ImGui::GetWindowDrawList()->AddLine(ImVec2(min.x, max.y), max, ImGui::GetColorU32(ImGuiCol_Text));
             if (hovered) {
                 open_on_idle_rclick(id);
             }
