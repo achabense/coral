@@ -916,7 +916,7 @@ public:
 
             // TODO: -> separate pages (instead of a single scrollable page)?
             int group_index = 0;
-            for (const auto& group : isotropic::get().groups()) {
+            for (const auto& group : isotropic::groups()) {
                 const codeT group_0 = group[0];
                 if (skip(group_0, rule[group_0])) {
                     space_index += cellT::states - 1;
@@ -1113,7 +1113,7 @@ private:
                     record.to_next();
                     sync_from_record();
                 } else {
-                    const auto& groups = isotropic::get().groups();
+                    const auto& groups = isotropic::groups();
                     const codeT group_0 = groups[get_rand()() % groups.size()][0];
                     record.set(group_0);
                     sync_from_record();
@@ -1155,7 +1155,7 @@ private:
             "Drag        - apply the value to multiple cells.");
         ImGui::SameLine();
         if (ImGui::Button("Locate")) {
-            const codeT group_0 = isotropic::get().group_for(iso3::encode(cells))[0];
+            const codeT group_0 = isotropic::group_for(iso3::encode(cells))[0];
             record.set(group_0);
             sync_from_record();
         }
