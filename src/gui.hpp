@@ -749,6 +749,7 @@ class main_data : no_copy {
     shared_popup& m_popup = m_spaces.popup(); // Shared from `m_spaces`. (Misc popups use negative id.)
 
     // TODO: support grouping / sorting / (more generalized) filtering / value-constraints etc.
+    // TODO: can be enhanced to [2862][3] by extending assignment format.
     bool misc_skip[3][3]{};
     bool misc_temp[3][3]{};
     bool skip(const codeT code, const cellT v) const { return misc_skip[iso3::decode(code, 4 /*center*/)][v]; }
@@ -780,6 +781,8 @@ public:
         m_popup.button_to_open("Misc", -300);
         item_tooltip("Experimental features.");
         if (m_popup.begin_popup(-300, true)) {
+            shortcut_group shortcut{no_active_and_window_focused()};
+
             if (ImGui::IsWindowAppearing()) {
                 std::memcpy(misc_temp, misc_skip, sizeof(misc_skip));
             }
@@ -800,6 +803,25 @@ public:
                     misc_temp[f][t] = !n;
                 }
             }
+
+            // Undocumented.
+            if (shortcut(ctrl_mode::ctrl, ImGuiKey_V, repeat_mode::no_repeat, 0)) {
+                const char* str = ImGui::GetClipboardText();
+                if (!str) {
+                    str = "";
+                }
+                assert(!to_rule);
+                if (iso3::from_string(to_rule.emplace_ex(), str)) {
+                    set_message("Assigned.");
+                } else if (iso3::assign_values(to_rule.emplace_ex() = m_rule.get(), str)) {
+                    // Format ~ [012*abc]{9}|[012i], e.g. *********|0 ****aa*a0|i ***aaaa00|i aaaa00a00|0 100000000|2
+                    set_message("Assigned.");
+                } else {
+                    to_rule.reset();
+                    set_message("No rules.");
+                }
+            }
+
             m_popup.end_popup();
         }
         if (item_tooltip_enabled) {

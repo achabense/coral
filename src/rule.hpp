@@ -324,6 +324,8 @@ namespace iso3 {
     }
 
     namespace _misc_ {
+        constexpr bool is_012(const char ch) { return ch == '0' || ch == '1' || ch == '2'; }
+
         constexpr char to_char(const std::array<cellT, 3> arr) {
             static_assert(pow_cs(3) <= 27);
             const int val = arr[0] * pow_cs(0) + arr[1] * pow_cs(1) + arr[2] * pow_cs(2);
@@ -396,8 +398,11 @@ namespace iso3 {
         inline std::string_view extract_string(std::string_view& str) {
             const char *pos = str.data(), *end = pos + str.size();
             int len = 0;
-            while (len < required_size && pos != end) {
+            while (pos != end) {
                 len = is_char(*pos++) ? len + 1 : 0;
+                if (len == required_size) {
+                    break;
+                }
             }
             str = {pos, end};
             if (len == required_size) {
@@ -442,6 +447,57 @@ namespace iso3 {
         verify(from_string(b, str2, iso) && b == a);
         // TODO: should also test with predefined rule string.
         // a = ...; const char* str3 = ...; verify(from_string(b, str3, iso) && b == a);
+    }
+
+    // Format: [012*abc]{9}|[012i] (*~0/1/2, a~1/2, b~0/2, c~0/1, i~center cell)
+    // Multiple assignments are applied in order without checking for contradictions.
+    inline bool assign_values(ruleT& rule, const std::string_view str, const isotropic& iso = isotropic::get()) {
+        using _misc_::is_012;
+        const auto assign = [&rule, &iso](const char* str) {
+            const auto fill = [&rule, ch = str[10]](const groupT group) {
+                rule.fill(group, ch == 'i' ? decode(group[0], 4) : cellT(ch - '0'));
+            };
+            if (std::ranges::all_of(str, str + 9, is_012)) { // Optimization.
+                envT env{};
+                for (int i = 0; i < 9; ++i) {
+                    env.data[i] = cellT(str[i] - '0');
+                }
+                fill(iso.group_for(encode(env)));
+            } else {
+                const auto match = [str](const codeT code) {
+                    // `ranges::equal` is inconvenient here. (Why is there no `std::equal_n`...)
+                    return std::equal(str, str + 9, decode(code).data, [](const char ch, const cellT cell) {
+                        return ch == '*' ? true : is_012(ch) ? cell == ch - '0' : cell != ch - 'a' /*abc*/;
+                    });
+                };
+                for (const groupT group : iso.groups()) {
+                    if (std::ranges::any_of(group, match)) {
+                        fill(group);
+                    }
+                }
+            }
+        };
+
+        bool assigned = false;
+        const char *pos = str.data(), *end = pos + str.size();
+        int len = 0;
+        while (pos != end) {
+            // Note: will ignore "valid" substrings like "00120120120|1" ("120120120|1" is valid, but the counter has been reset earlier.)
+            const char ch = *pos++;
+            if (len <= 8   ? is_012(ch) || ch == '*' || ch == 'a' || ch == 'b' || ch == 'c'
+                : len == 9 ? ch == '|'
+                           : is_012(ch) || ch == 'i' /*len == 10*/) {
+                ++len;
+            } else {
+                len = 0;
+            }
+            if (len == 11) {
+                len = 0;
+                assigned = true;
+                assign(pos - 11);
+            }
+        }
+        return assigned;
     }
 
     struct sizeT {
