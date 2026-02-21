@@ -415,7 +415,7 @@ namespace iso3 {
 
     using _misc_::to_string;
 
-    inline bool from_string(ruleT& rule, std::string_view& str, const isotropic& iso = isotropic::get()) {
+    inline bool extract_rule(ruleT& rule, std::string_view& str, const isotropic& iso = isotropic::get()) {
         const auto extr = _misc_::extract_string(str);
         if (!extr.empty()) {
             _misc_::from_string_unchecked(rule, extr, iso);
@@ -424,7 +424,7 @@ namespace iso3 {
         return false;
     }
 
-    inline bool from_string(std::vector<ruleT>& vec, std::string_view& str, const isotropic& iso = isotropic::get()) {
+    inline bool extract_rule(std::vector<ruleT>& vec, std::string_view& str, const isotropic& iso = isotropic::get()) {
         const auto extr = _misc_::extract_string(str);
         if (!extr.empty()) {
             _misc_::from_string_unchecked(vec.emplace_back(), extr, iso);
@@ -433,8 +433,8 @@ namespace iso3 {
         return false;
     }
 
-    inline bool from_string(ruleT& rule, std::string_view&& str, const isotropic& iso = isotropic::get()) {
-        return from_string(rule, str, iso);
+    inline bool extract_rule(ruleT& rule, std::string_view&& str, const isotropic& iso = isotropic::get()) {
+        return extract_rule(rule, str, iso);
     }
 
     inline void test_saving(randT& rand, const isotropic& iso = isotropic::get()) {
@@ -443,17 +443,17 @@ namespace iso3 {
         rand_rule(a, rand, iso);
         const std::string str1 = to_string(a, iso);
         const std::string str2 = "abc   " + str1 + "     defg";
-        verify(from_string(b, str1, iso) && b == a);
-        verify(from_string(b, str2, iso) && b == a);
+        verify(extract_rule(b, str1, iso) && b == a);
+        verify(extract_rule(b, str2, iso) && b == a);
         // TODO: should also test with predefined rule string.
-        // a = ...; const char* str3 = ...; verify(from_string(b, str3, iso) && b == a);
+        // a = ...; const char* str3 = ...; verify(extract_rule(b, str3, iso) && b == a);
     }
 
     // Format: [012*abc]{9}|[012i] (*~0/1/2, a~1/2, b~0/2, c~0/1, i~center cell)
     // Multiple assignments are applied in order without checking for contradictions.
-    inline bool assign_values(ruleT& rule, const std::string_view str, const isotropic& iso = isotropic::get()) {
+    inline bool extract_values(ruleT& rule, const std::string_view str, const isotropic& iso = isotropic::get()) {
         using _misc_::is_012;
-        const auto assign = [&rule, &iso](const char* str) {
+        const auto apply = [&rule, &iso](const char* str) {
             const auto fill = [&rule, ch = str[10]](const groupT group) {
                 rule.fill(group, ch == 'i' ? decode(group[0], 4) : cellT(ch - '0'));
             };
@@ -478,7 +478,7 @@ namespace iso3 {
             }
         };
 
-        bool assigned = false;
+        bool written = false;
         const char *pos = str.data(), *end = pos + str.size();
         int len = 0;
         while (pos != end) {
@@ -493,11 +493,11 @@ namespace iso3 {
             }
             if (len == 11) {
                 len = 0;
-                assigned = true;
-                assign(pos - 11);
+                written = true;
+                apply(pos - 11);
             }
         }
-        return assigned;
+        return written;
     }
 
     struct sizeT {

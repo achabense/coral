@@ -170,6 +170,9 @@ public:
         assert(1 <= m_size && m_size <= m_capacity && 0 <= m_0 && m_0 < m_capacity);
         return at(m_size - 1);
     }
+
+    void truncate(int max_size) { m_size = std::clamp(m_size, 0, max_size); }
+    T& emplace_back(const T& val) { return emplace_back_ex() = val; }
 };
 
 // Always non-empty. (Initially contains a single {}.)
@@ -191,8 +194,8 @@ public:
     void set(const T& val) {
         assert(0 <= m_pos && m_pos < m_data.size());
         if (m_data.at(m_pos) != val) {
-            m_data.resize_ex(m_pos + 1); // Discard values after the current pos.
-            m_data.emplace_back_ex() = val;
+            m_data.truncate(m_pos + 1); // Discard values after the current pos.
+            m_data.emplace_back(val);
             m_pos = m_data.size() - 1;
         }
     }
@@ -201,21 +204,24 @@ public:
 // To replace std::optional<ruleT> (for stack allocation).
 class opt_rule : no_copy {
     std::unique_ptr<ruleT> m_rule{new ruleT{}};
-    bool has_value = false;
+    bool m_assigned = false;
 
 public:
-    explicit operator bool() const { return has_value; }
+    explicit operator bool() const { return m_assigned; }
     const ruleT& operator*() const {
-        assert(has_value);
+        assert(m_assigned);
         return *m_rule;
     }
-    void reset() { has_value = false; }
+    bool has_value() const { return m_assigned; }
+    void reset() { m_assigned = false; }
 
     // Not responsible for the value.
     ruleT& emplace_ex() {
-        has_value = true;
+        m_assigned = true;
         return *m_rule;
     }
+
+    ruleT& emplace(const ruleT& rule) { return emplace_ex() = rule; }
 };
 
 enum class ctrl_mode { ctrl, no_ctrl };
@@ -431,7 +437,7 @@ public:
             select |= ImGui::IsItemActivated(); // Clicked.
         }
         if (select) {
-            to_rule->emplace_ex() = rule;
+            to_rule->emplace(rule);
             set_message("Selected.");
         }
         if (copy) {
@@ -541,7 +547,7 @@ private:
 
         ImGui::BeginDisabled(m_rules.empty());
         if (imgui_DoubleClickButton("Clear")) {
-            m_rules.resize_ex(0); // Won't actually free up memory.
+            m_rules.truncate(0); // Won't actually free up memory.
             m_pos = 0;
         }
         // item_tooltip("When there are too many rules, the oldest rules will be cleared automatically.");
@@ -570,8 +576,7 @@ private:
                 const int num = m_rules.size() < page_end ? page_end - m_rules.size() : page_size;
                 for (int i = 0; i < num; ++i) {
                     // iso3::rand_rule(m_rules.emplace_back_ex(), rand, {64, 4, 1});
-                    ruleT& rule = m_rules.emplace_back_ex();
-                    rule = m_rel ? *m_rel : rel;
+                    ruleT& rule = m_rules.emplace_back(m_rel ? *m_rel : rel);
                     if (m_mode == rand_mode::p) {
                         iso3::randomize_p(rule, rand, m_dist / 100.0);
                     } else {
@@ -613,7 +618,7 @@ private:
         ImGui::SameLine();
         if (bool locked = bool(m_rel); ImGui::Checkbox("Lock", &locked)) {
             if (!m_rel) {
-                m_rel.emplace_ex() = rel;
+                m_rel.emplace(rel);
                 set_message("Locked.");
             } else {
                 m_rel.reset();
@@ -717,7 +722,7 @@ private:
         std::vector<ruleT> rules{};
         rules.reserve(reserve);
         for (int i = 0; i < max; ++i) {
-            if (!iso3::from_string(rules, str)) {
+            if (!iso3::extract_rule(rules, str)) {
                 break;
             }
         }
@@ -811,11 +816,11 @@ public:
                     str = "";
                 }
                 assert(!to_rule);
-                if (iso3::from_string(to_rule.emplace_ex(), str)) {
-                    set_message("Assigned.");
-                } else if (iso3::assign_values(to_rule.emplace_ex() = m_rule.get(), str)) {
+                if (iso3::extract_rule(to_rule.emplace_ex(), str)) {
+                    // set_message("...");
+                } else if (iso3::extract_values(to_rule.emplace(m_rule.get()), str)) {
                     // Format ~ [012*abc]{9}|[012i], e.g. *********|0 ****aa*a0|i ***aaaa00|i aaaa00a00|0 100000000|2
-                    set_message("Assigned.");
+                    // set_message("...");
                 } else {
                     to_rule.reset();
                     set_message("No rules.");
