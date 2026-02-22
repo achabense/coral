@@ -210,6 +210,18 @@ namespace iso3 {
         }
     }
 
+    inline bool is_isotropic(const ruleT& rule) {
+        for (const groupT group : isotropic::groups()) {
+            const cellT v = rule[group[0]];
+            for (const codeT code : group.subspan(1)) {
+                if (v != rule[code]) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
     inline void to_zero(ruleT& rule) { rule.fill({}); }
 
     inline void to_identity(ruleT& rule) {

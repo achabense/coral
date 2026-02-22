@@ -774,6 +774,7 @@ public:
         // TODO: slightly wasteful. (Can reuse memory by making `record_for::get()` return non-const ref, but that's risky.)
         std::unique_ptr<ruleT> temp_rule(new ruleT{m_rule.get()});
         ruleT& rule = *temp_rule;
+        assert(iso3::is_isotropic(rule));
         m_settings.begin();
 
         const int item_spacing = ImGui::GetStyle().ItemSpacing.x;
