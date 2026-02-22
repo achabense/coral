@@ -619,7 +619,7 @@ namespace iso3 {
             }
         }
 
-        // 2025/12/25.
+        // 2025/12/25 & 2026/2/22.
         // Optimized version of run(); hope nothing can be worse than this in this project...
         void run_ex(const ruleT& rule) {
             assert(cellT::states == 3); // && encoding ~ q*1 + w*3 + e*9 + a*27 + ...
@@ -629,12 +629,12 @@ namespace iso3 {
             }
 
             // l*1 + (q*3 + w*9) <- l (q*1 + w*3 + e*9) r -> (w*1 + e*3) + r*9
-            // [0] -> [x-1]: (q*1 + w*3 + e*9) -> (w*1 + e*3) ~ "/3" (current impl)
-            // [0] <- [x-1]: (q*1 + w*3 + e*9) -> (q*3 + w*9) ~ "%9*3" (also a single mapping; maybe more efficient?)
+            // [0] -> [x-1]: (q*1 + w*3 + e*9) -> (w*1 + e*3) ~ "/3" (old impl)
+            // [0] <- [x-1]: (q*1 + w*3 + e*9) -> (q*3 + w*9) ~ "%9*3" (current impl; slightly faster)
             using packT = uint8_t;
-            static constexpr packT div3[27]{0, 0, 0, 1, 1, 1, 2, 2, 2, //
-                                            3, 3, 3, 4, 4, 4, 5, 5, 5, //
-                                            6, 6, 6, 7, 7, 7, 8, 8, 8};
+            static constexpr packT slide[27]{0, 3, 6, 9, 12, 15, 18, 21, 24, //
+                                             0, 3, 6, 9, 12, 15, 18, 21, 24, //
+                                             0, 3, 6, 9, 12, 15, 18, 21, 24};
 
             std::unique_ptr<cellT[]> buffer_a(new cellT[m_size.x]{});
             std::unique_ptr<packT[]> buffer_b(new packT[m_size.x * 3]{});
@@ -648,11 +648,11 @@ namespace iso3 {
             const int xm1 = m_size.x - 1;
             auto fill_p3 = [xm1](packT* pack, const cellT* line) {
                 const cellT left = line[xm1], right = line[0];
-                packT p3 = left * 3 + line[0] * 9; // [0, 27)
-                for (int x = 0; x < xm1; ++x) {
-                    pack[x] = p3 = div3[p3] + line[x + 1] * 9;
+                packT p3 = line[xm1] + right * 3; // [0, 27)
+                for (int x = xm1; x > 0; --x) {
+                    pack[x] = p3 = slide[p3] + line[x - 1];
                 }
-                pack[xm1] = div3[p3] + right * 9;
+                pack[0] = slide[p3] + left;
             };
             fill_p3(p3_prev, data + m_size.x * (m_size.y - 1));
             fill_p3(p3_curr, data);
@@ -660,13 +660,13 @@ namespace iso3 {
                 cellT* const line = data + m_size.x * y;
                 cellT* const next = y == m_size.y - 1 ? first_line : line + m_size.x;
                 const cellT left = next[xm1], right = next[0];
-                packT p3 = left * 3 + next[0] * 9; // [0, 27)
-                for (int x = 0; x < xm1; ++x) {
-                    p3_next[x] = p3 = div3[p3] + next[x + 1] * 9;
+                packT p3 = next[xm1] + right * 3; // [0, 27)
+                for (int x = xm1; x > 0; --x) {
+                    p3_next[x] = p3 = slide[p3] + next[x - 1];
                     line[x] = rule[codeT(p3_prev[x] + p3_curr[x] * 27 + p3_next[x] * 729)];
                 }
-                p3_next[xm1] = div3[p3] + right * 9;
-                line[xm1] = rule[codeT(p3_prev[xm1] + p3_curr[xm1] * 27 + p3_next[xm1] * 729)];
+                p3_next[0] = slide[p3] + left;
+                line[0] = rule[codeT(p3_prev[0] + p3_curr[0] * 27 + p3_next[0] * 729)];
 
                 packT* tmp = p3_prev; // Prepare for next line.
                 p3_prev = p3_curr;
