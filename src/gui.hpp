@@ -1088,7 +1088,7 @@ private:
 
         // TODO: working but technically should belong to object.
         static_var iso3::envT cells{};
-        static_var record_for<codeT> record{10}; // Only for "Locate" and ">>>".
+        static_var record_for<codeT> record{10}; // Only for "Locate" and "Random".
         const auto sync_from_record = [&] {
             cells = iso3::decode(record.get());
             to_locate = record.get();
@@ -1101,27 +1101,18 @@ private:
             }
             ImGui::EndDisabled();
             item_tooltip(
-                "Record for located groups (via \">>>\" and \"Locate\"):\n"
-                "<<  (Left      ) - get to the previous group.\n"
-                ">>> (Right     ) - get to the next group or a random group.\n"
-                "|>  (Ctrl+Right) - get to the last group.\n\n"
-                "\">>>\" will get to random groups when at the end of record.\n\n"
-                "(Try the shortcuts to see how these work.)");
-            ImGui::SameLine();
-            if (ImGui::SmallButton(">>>") ||
-                shortcut(ctrl_mode::no_ctrl, ImGuiKey_RightArrow, repeat_mode::no_repeat)) {
-                if (record.has_next()) {
-                    record.to_next();
-                    sync_from_record();
-                } else {
-                    const auto& groups = isotropic::groups();
-                    const codeT group_0 = groups[get_rand()() % groups.size()][0];
-                    record.set(group_0);
-                    sync_from_record();
-                }
-            }
+                "Record for located groups (via \"Locate\" or \"Random\"):\n"
+                "<< (Left      ) - get to the previous group.\n"
+                ">> (Right     ) - get to the next group.\n"
+                "|> (Ctrl+Right) - get to the last group.");
             ImGui::SameLine();
             ImGui::BeginDisabled(!record.has_next());
+            // Intentionally not >>> (end -> random group).
+            if (ImGui::SmallButton(">>") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_RightArrow, repeat_mode::no_repeat)) {
+                record.to_next();
+                sync_from_record();
+            }
+            ImGui::SameLine();
             if (ImGui::SmallButton("|>") || shortcut(ctrl_mode::ctrl, ImGuiKey_RightArrow, repeat_mode::no_repeat)) {
                 record.to_last();
                 sync_from_record();
@@ -1155,11 +1146,19 @@ private:
             "Right-click - use the current value.\n"
             "Drag        - apply the value to multiple cells.");
         ImGui::SameLine();
-        if (ImGui::Button("Locate")) {
+        ImGui::BeginGroup();
+        if (ImGui::SmallButton("Locate")) {
             const codeT group_0 = isotropic::group_for(iso3::encode(cells))[0];
             record.set(group_0);
             sync_from_record();
         }
+        if (ImGui::SmallButton("Random")) {
+            const auto& groups = isotropic::groups();
+            const codeT group_0 = groups[get_rand()() % groups.size()][0];
+            record.set(group_0);
+            sync_from_record();
+        }
+        ImGui::EndGroup();
     }
 };
 
