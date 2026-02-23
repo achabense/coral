@@ -1093,7 +1093,8 @@ private:
             cells = iso3::decode(record.get());
             to_locate = record.get();
         };
-        {
+        // TODO: whether to support record?
+        if constexpr (0) {
             ImGui::BeginDisabled(!record.has_prev());
             if (ImGui::SmallButton("<<") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_LeftArrow, repeat_mode::no_repeat)) {
                 record.to_prev();
@@ -1147,14 +1148,15 @@ private:
             "Drag        - apply the value to multiple cells.");
         ImGui::SameLine();
         ImGui::BeginGroup();
-        if (ImGui::SmallButton("Locate")) {
+        if (ImGui::Button("Locate")) {
             const codeT group_0 = isotropic::group_for(iso3::encode(cells))[0];
             record.set(group_0);
             sync_from_record();
         }
-        if (ImGui::SmallButton("Random")) {
+        if (ImGui::Button("Random")) {
             const auto& groups = isotropic::groups();
             const codeT group_0 = groups[get_rand()() % groups.size()][0];
+            // TODO: whether to locate automatically?
             record.set(group_0);
             sync_from_record();
         }
