@@ -125,9 +125,6 @@ int main(int, char**) {
         // Setup Platform/Renderer backends.
         ImGui_ImplSDL3_InitForSDLRenderer(window, renderer);
         ImGui_ImplSDLRenderer3_Init(renderer);
-        ImGui::GetPlatformIO().Platform_OpenInShellFn = [](ImGuiContext*, const char* u8path) {
-            return SDL_OpenURL(u8path);
-        };
     }
 
     for (main_data data{};;) {
