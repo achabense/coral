@@ -7,6 +7,12 @@
 
 #include "rule.hpp"
 
+#ifndef NDEBUG
+inline constexpr bool debug_mode = true;
+#else
+inline constexpr bool debug_mode = false;
+#endif // !NDEBUG
+
 using iso3::cellT;
 using iso3::codeT;
 using iso3::randT;
@@ -36,6 +42,7 @@ extern ImTextureID texture_create(const tileT& /*not-empty*/);
 extern void texture_update(ImTextureID /*not-null*/, const tileT& /*same-size*/);
 extern void texture_destroy(ImTextureID /*not-null*/);
 
+// TODO: fragile (working in `space_group` but relying on current use pattern); should explicitly deal with texture sharing...
 class tile_with_texture : no_copy {
     tileT m_tile = {};
     ImTextureID m_texture = {};
@@ -603,8 +610,8 @@ private:
         item_tooltip( // TODO: improve (only this tooltip uses "distance").
             "(Distance ~ the number of groups with different values.)\n\n"
             "P - the generated rules will have roughly p% groups with different values.\n"
-            "N - the generated rules will have exactly n groups with different values.\n\n" // TODO: idk how to describe v naturally...
-            "By default (when not \"locked\"), the distance is relative to the selected rule (for editing). Use \"Lock\" to lock the relative rule (so rule generation will not be affected by selection).\n\n"
+            "N - the generated rules will have exactly n groups with different values.\n\n"
+            // "By default (when not \"locked\"), the distance is relative to the selected rule (for editing). Use \"Lock\" to lock the relative rule (so rule generation will not be affected by selection).\n\n"
             "(P is suitable for discovering random rules; N is suitable for searching around specific rules.)");
         ImGui::SameLine();
         if (ImGui::RadioButton("N", m_mode == rand_mode::n)) {
@@ -614,17 +621,20 @@ private:
         // TODO: the label is not accurate enough. (randomize_n() uses exact dist, while randomize_p() uses possibility.)
         imgui_SliderIntEx(ImGui::GetFontSize() * 10, "##Dist", m_dist, 0, 100, true,
                           m_mode == rand_mode::n ? "Dist: %d" : "Dist: %d%%");
-        // TODO: improve; should be able to visualize the rule...
-        ImGui::SameLine();
-        if (bool locked = bool(m_rel); ImGui::Checkbox("Lock", &locked)) {
-            if (!m_rel) {
-                m_rel.emplace(rel);
-                set_message("Locked.");
-            } else {
-                m_rel.reset();
+        // TODO: should be able to visualize the rule...
+        // (Ideally the locked rule should be shown in a separate window, but it's hard to control z-order in imgui...)
+        if constexpr (debug_mode) {
+            ImGui::SameLine();
+            if (bool locked = bool(m_rel); ImGui::Checkbox("Lock", &locked)) {
+                if (!m_rel) {
+                    m_rel.emplace(rel);
+                    set_message("Locked.");
+                } else {
+                    m_rel.reset();
+                }
             }
+            // item_tooltip("See the tooltip for \"P\" for details.");
         }
-        item_tooltip("See the tooltip for \"P\" for details.");
 
         ImGui::Separator();
         m_settings.header();
@@ -784,33 +794,32 @@ public:
 
         ImGui::SameLine();
         ImGui::BeginGroup();
-        m_popup.button_to_open("Misc", -300);
-        item_tooltip("Experimental features.");
-        if (m_popup.begin_popup(-300, true)) {
-            shortcut_group shortcut{no_active_and_window_focused()};
-
-            if (ImGui::IsWindowAppearing()) {
-                std::memcpy(misc_temp, misc_skip, sizeof(misc_skip));
-            }
-            if (imgui_DoubleClickButton("Apply")) {
-                std::memcpy(misc_skip, misc_temp, sizeof(misc_skip));
-                set_message("Applied.");
-            }
-            ImGui::SameLine();
-            imgui_Text("(Value filter)");
-            for (int f = 0; f < 3; ++f) {
-                for (int t = 0; t < 3; ++t) {
-                    if (t != 0) {
-                        ImGui::SameLine();
-                    }
-                    const char label[]{char('0' + f), '-', '>', char('0' + t), '\0'};
-                    bool n = !misc_temp[f][t];
-                    ImGui::Checkbox(label, &n);
-                    misc_temp[f][t] = !n;
+        if constexpr (debug_mode) { // Experimental features.
+            m_popup.button_to_open("Filter", -300);
+            if (m_popup.begin_popup(-300, true)) {
+                if (ImGui::IsWindowAppearing()) {
+                    std::memcpy(misc_temp, misc_skip, sizeof(misc_skip));
                 }
+                if (imgui_DoubleClickButton("Apply")) {
+                    std::memcpy(misc_skip, misc_temp, sizeof(misc_skip));
+                    set_message("Applied.");
+                }
+                for (int f = 0; f < 3; ++f) {
+                    for (int t = 0; t < 3; ++t) {
+                        if (t != 0) {
+                            ImGui::SameLine();
+                        }
+                        const char label[]{char('0' + f), '-', '>', char('0' + t), '\0'};
+                        bool n = !misc_temp[f][t];
+                        ImGui::Checkbox(label, &n);
+                        misc_temp[f][t] = !n;
+                    }
+                }
+
+                m_popup.end_popup();
             }
 
-            // Undocumented.
+            shortcut_group shortcut{no_active_and_window_focused()};
             if (shortcut(ctrl_mode::ctrl, ImGuiKey_V, repeat_mode::no_repeat, 0)) {
                 const char* str = ImGui::GetClipboardText();
                 if (!str) {
@@ -827,8 +836,6 @@ public:
                     set_message("No rules.");
                 }
             }
-
-            m_popup.end_popup();
         }
         if (item_tooltip_enabled) {
             const auto text_with_tooltip = [](const char* text, const char* tooltip) {
@@ -838,7 +845,7 @@ public:
 
             text_with_tooltip( // TODO: support opening link in browser.
                 "About this program",
-                "Coral v1.0.0 WIP (c) 2025-2026 achabense (GitHub username)\n\n"
+                "Coral v0.9 WIP (c) 2025-2026 achabense (GitHub username)\n\n"
                 "GitHub repo: https://github.com/achabense/coral\n\n"
                 "This program has access to all isotropic 3-state rules in the range-1 Moore neighborhood.");
             text_with_tooltip( // "Space windows" sounds good, but may confuse with regular windows.
@@ -878,6 +885,9 @@ public:
                 "Down      - scroll down.\n"
                 "Ctrl+Up   - scroll to top.\n"
                 "Ctrl+Down - scroll to bottom.");
+        } else {
+            // TODO: is empty group guaranteed to be valid (and consume SameLine())?
+            ImGui::Dummy({1, 1});
         }
         ImGui::EndGroup();
 
@@ -1094,7 +1104,7 @@ private:
             to_locate = record.get();
         };
         // TODO: whether to support record?
-        if constexpr (0) {
+        if constexpr (debug_mode) {
             ImGui::BeginDisabled(!record.has_prev());
             if (ImGui::SmallButton("<<") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_LeftArrow, repeat_mode::no_repeat)) {
                 record.to_prev();

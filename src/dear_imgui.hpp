@@ -37,6 +37,7 @@ extern bool imgui_DummyEx(ImVec2 size, const char* str_id, int extra_id);
 
 extern bool imgui_DoubleClickButton(const char* label, ImVec2 size = {});
 
+// TODO: support displaying hovered value in tooltip?
 extern void imgui_SliderIntEx(float slider_width, const char* label, int& val, int min /*[*/, int max /*]*/,
                               bool repeat, const char* format /*= "%d"*/);
 
@@ -199,6 +200,7 @@ public:
     }
 };
 
+// TODO: make this non-blocking?
 class file_loader : no_copy {
     std::shared_ptr<void> m_impl{}; // Unique ownership; just for simpler code.
 
