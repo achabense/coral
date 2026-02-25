@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.25)
 
 project(coral LANGUAGES CXX)
 
+# Workaround to prevent absolute __FILE__ in release build. (Shame on MSVC...)
+add_compile_options("$<$<AND:$<CONFIG:Release>,$<CXX_COMPILER_ID:MSVC>>:/experimental:deterministic;/pathmap:${CMAKE_SOURCE_DIR}=project>")
+add_compile_options("$<$<AND:$<CONFIG:Release>,$<CXX_COMPILER_ID:Clang,GNU>>:-ffile-prefix-map=${CMAKE_SOURCE_DIR}=project>")
+
 include(FetchContent)
 set(FETCHCONTENT_QUIET FALSE)
 set(FETCHCONTENT_UPDATES_DISCONNECTED TRUE)

@@ -297,10 +297,10 @@ public:
             restart = true;
         }
         item_tooltip(
-            "Restart  (R    ) - restart all spaces in this window.\n"
-            "Pause    (Space) - turn on/off auto mode.\n"
-            "Step     (1/2  ) - change the step of auto mode.\n"
-            "Interval (3/4  ) - change the interval of auto mode (1 ~ each frame).\n\n"
+            "Restart  (R    ) ~ restart all spaces in this window.\n"
+            "Pause    (Space) ~ turn on/off auto mode.\n"
+            "Step     (1/2  ) ~ control the step of auto run.\n"
+            "Interval (3/4  ) ~ control the freq of auto run (1 ~ each frame).\n\n"
             "(Try the shortcuts to see how these work.)");
         ImGui::SameLine();
         ImGui::Checkbox("Pause", &pause);
@@ -567,11 +567,10 @@ private:
         }
         ImGui::EndDisabled();
         item_tooltip(
-            "For rule generation:\n"
-            "<<  (Left      ) - get to the previous page.\n"
-            ">>> (Right     ) - get to the next page or generate a new page.\n"
-            "|>  (Ctrl+Right) - get to the last page.\n\n"
-            "\">>>\" will generate new pages of random rules when you are at the last page (or when there are no rules). See the tooltip for \"P\" for more details.\n\n"
+            "<<  (Left      ) ~ get to the previous page.\n"
+            ">>> (Right     ) ~ get to the next page or generate a new page.\n"
+            "|>  (Ctrl+Right) ~ get to the last page.\n\n"
+            "\">>>\" generates new pages of random rules when at the last page (or when there are no rules). See the tooltip for \"P\" for more details.\n\n"
             "(Try the shortcuts to see how these work.)");
         ImGui::SameLine();
         if (ImGui::Button(">>>") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_RightArrow, repeat_mode::no_repeat)) {
@@ -607,12 +606,11 @@ private:
         if (ImGui::RadioButton("P", m_mode == rand_mode::p)) {
             m_mode = rand_mode::p;
         }
-        item_tooltip( // TODO: improve (only this tooltip uses "distance").
-            "(Distance ~ the number of groups with different values.)\n\n"
-            "P - the generated rules will have roughly p% groups with different values.\n"
-            "N - the generated rules will have exactly n groups with different values.\n\n"
-            // "By default (when not \"locked\"), the distance is relative to the selected rule (for editing). Use \"Lock\" to lock the relative rule (so rule generation will not be affected by selection).\n\n"
-            "(P is suitable for discovering random rules; N is suitable for searching around specific rules.)");
+        item_tooltip(
+            "The \"distance\" (number of groups with different values) is relative to the selected rule.\n\n"
+            "P ~ around p% groups will have different values.\n"
+            "N ~ exactly n groups will have different values.\n\n"
+            "(P is suitable for making random discoveries; N is suitable for searching around specific rules.)");
         ImGui::SameLine();
         if (ImGui::RadioButton("N", m_mode == rand_mode::n)) {
             m_mode = rand_mode::n;
@@ -845,46 +843,47 @@ public:
 
             text_with_tooltip( // TODO: support opening link in browser.
                 "About this program",
-                "Coral v0.9 WIP (c) 2025-2026 achabense (GitHub username)\n\n"
-                "GitHub repo: https://github.com/achabense/coral\n\n"
-                "This program has access to all isotropic 3-state rules in the range-1 Moore neighborhood.");
+                "Coral v0.9 (c) 2025-2026 achabense (https://github.com/achabense/coral)\n\n"
+                "This program is for exploring isotropic 3-state CA rules in the range-1 Moore neighborhood.");
             text_with_tooltip( // "Space windows" sounds good, but may confuse with regular windows.
                 "Spaces",
-                "Rules are emulated in the torus spaces.\n\n" // Can be imagined as periodic unit in the infinite space.
+                "Rules are emulated in torus spaces.\n\n" // Can be imagined as periodic unit in the infinite space.
                 "For each space:\n"
-                "Hold        - pause.\n"
-                "Hold+scroll - change zoom level.\n"
-                "Right-click - open menu (for copying and selecting).\n\n"
+                "Hold        to pause.\n"
+                "Hold+scroll to zoom in/out.\n"
+                "Right-click to open menu (to copy/select the rule).\n\n"
                 "To run manually (regardless of whether paused):\n"
-                "S - run by the step.\n"
-                "D - run by 1.\n"
-                "F - run by the largest step at each frame.\n\n"
+                "S ~ run by the step (\"Step\").\n"
+                "D ~ run by 1.\n"
+                "F ~ run by the largest step at each frame.\n\n"
                 "(Also see the tooltip for \"Restart\".)");
             text_with_tooltip( // TODO: maintain a file for recently-copied rules (e.g. recently_copied.txt)?
                 "Saving and loading rules",
-                "Rules can be saved and loaded in a plain-text format specific to this program.\n\n"
-                "Open menu for the space to copy the rule. (Remember to paste the rule elsewhere.)\n\n"
+                "Rules can be saved and loaded in a custom plain-text format.\n\n"
+                "Open menu to copy rule to the clipboard. (Remember to paste the rule elsewhere.)\n\n"
                 "Use \"Load\" to load rules from files or the clipboard.");
+            //  "(Copy this tooltip (Ctrl+C) to verify the clipboard works.)");
             text_with_tooltip( //
                 "Rule editing",
-                "Isotropic rules must map cell to the same value for all cases in each group, and there is no constraint for values in different groups.\n\n"
-                "For the \"selected rule\" (shown at left), the list below displays all rules with only one group having different value. You can \"edit\" the current rule by selecting rules in the list, and starting from any rule, you can get to any other rule in the set. (So this is effectively random-access editing.)\n\n"
-                "There are 2862 groups, each with 3 possible values, which means there are 3^2862 isotropic rules in total, and 2 * 2862 rules in the list.\n\n"
+                "Isotropic rules must map cell to the same value for all equivalent cases (a \"group\").\n\n"
+                "For the \"selected rule\", the list below displays all rules with only one group having different value. You can \"edit\" by selecting rules in the list. Starting from any rule, you can get to any other rule in the set.\n\n"
+                "There are 2862 groups, each with 3 possible values, which means there are 3^2862 isotropic rules in total (and 2 * 2862 rules in the list).\n\n"
                 "(The program is also able to generate random rules. See \"Generate\" for details.)");
             text_with_tooltip( //
                 "Preventing strobing effect",
-                "Rules with certain value mappings may have large spans of area strobing among colors.\n\n"
-                "To prevent the strobing effect, you can change the step to 2, 3, etc. (A multiple of 6 is likely to work for most rules.)");
+                "Rules with certain values may have large spans of area strobing among colors.\n\n"
+                "To prevent the strobing effect, you can change step to 2, 3, etc. (A multiple of 6 works for most rules.)");
             text_with_tooltip( //
                 "Scrolling",
-                "To scroll with the scrollbar:\n"
-                "Click      - scroll towards position.\n"
-                "Ctrl+click - scroll to position.\n\n" // Or drag from scroll button.
+                "To scroll with scrollbar:\n"
+                "Click      to scroll towards position.\n"
+                "Ctrl+click to scroll to position.\n\n" // Or drag from scroll button.
                 "To scroll with shortcuts:\n"
-                "Up        - scroll up.\n"
-                "Down      - scroll down.\n"
-                "Ctrl+Up   - scroll to top.\n"
-                "Ctrl+Down - scroll to bottom.");
+                "Up/Down      ~ scroll up/down.\n"
+                "Ctrl+Up/Down ~ scroll to top/bottom.");
+
+            imgui_Text("");
+            imgui_Text("<- the \"selected rule\"");
         } else {
             // TODO: is empty group guaranteed to be valid (and consume SameLine())?
             ImGui::Dummy({1, 1});
@@ -952,7 +951,7 @@ public:
                 }
                 if (item_tooltip_enabled && group_index == 1) {
                     item_tooltip(
-                        "The first small block (below) represents the value of the selected rule. Other blocks represent the values of \"edited\" rules.\n\n"
+                        "The first small block (below group) represents value of the selected rule.\n\n" // Other blocks...
                         "Right-click to locate groups.");
                 } else if (ImGui::BeginItemTooltip()) {
                     for (bool first = true; const codeT c : group) {
@@ -1004,9 +1003,8 @@ private:
             item_tooltip_enabled = !item_tooltip_enabled;
         }
         item_tooltip(
-            "Turn on/off tooltips. Shortcut: H (works everywhere).\n\n"
-            "You can press Ctrl+C to copy the text in each tooltip.");
-        //  "(Try Ctrl+C to see whether the clipboard works. The program relies on the clipboard for saving rules.)");
+            "Turn on/off tooltips. Shortcut: H.\n\n"
+            "(Press Ctrl+C to copy tooltip text.)");
         ImGui::SameLine();
         ImGui::Checkbox("Load", &m_loader.open);
         item_tooltip("Load rules from files or the clipboard.");
@@ -1016,12 +1014,11 @@ private:
         ImGui::SameLine();
         const bool to_zero = imgui_DoubleClickButton("Zero");
         item_tooltip(
-            "(Purple buttons like these require double-clicking.)\n\n"
-            "For rule editing (set the rule to the following rules):\n"
-            "Zero     - the all-0 rule, i.e. the rule that maps cell to 0 in all cases.\n"
-            "Identity - the rule that preserves cell's value in all cases.\n"
-            "Life     - a special 3-state version of the Game of Life rule.\n\n"
-            "The rule for editing is initially the all-0 rule.");
+            "Reset to the following rules:\n"
+            "Zero     ~ the rule that maps cell to 0 in all cases (~ the initial rule).\n"
+            "Identity ~ the rule that preserves cell's value in all cases.\n"
+            "Life     ~ a special 3-state version of the Game of Life rule.\n\n"
+            "(Purple buttons like these require double-clicking.)");
         ImGui::SameLine();
         const bool to_identity = imgui_DoubleClickButton("Identity");
         ImGui::SameLine();
@@ -1035,10 +1032,10 @@ private:
         ImGui::EndDisabled();
         item_tooltip(
             // "(Left/Right/Ctrl+Right work for similar items in other windows.)\n\n"
-            "Record for rule editing:\n"
-            "<< (Left      ) - get to the previous rule (~ undo selection).\n"
-            ">> (Right     ) - get to the next rule (~ redo selection).\n"
-            "|> (Ctrl+Right) - get to the last rule.");
+            "Undo/redo selection:\n"
+            "<< (Left      ) ~ get to the previous rule.\n"
+            ">> (Right     ) ~ get to the next rule.\n"
+            "|> (Ctrl+Right) ~ get to the last rule.");
         ImGui::SameLine();
         ImGui::BeginDisabled(!m_rule.has_next());
         const bool to_next = ImGui::Button(">>") ||
@@ -1113,9 +1110,9 @@ private:
             ImGui::EndDisabled();
             item_tooltip(
                 "Record for located groups (via \"Locate\" or \"Random\"):\n"
-                "<< (Left      ) - get to the previous group.\n"
-                ">> (Right     ) - get to the next group.\n"
-                "|> (Ctrl+Right) - get to the last group.");
+                "<< (Left      ) ~ get to the previous group.\n"
+                ">> (Right     ) ~ get to the next group.\n"
+                "|> (Ctrl+Right) ~ get to the last group.");
             ImGui::SameLine();
             ImGui::BeginDisabled(!record.has_next());
             // Intentionally not >>> (end -> random group).
@@ -1153,9 +1150,9 @@ private:
             }
         }
         item_tooltip(
-            "Left-click  - change value.\n"
-            "Right-click - use the current value.\n"
-            "Drag        - apply the value to multiple cells.");
+            "Left-click  to change value.\n"
+            "Right-click to take the current value.\n"
+            "Drag        to apply to multiple cells.");
         ImGui::SameLine();
         ImGui::BeginGroup();
         if (ImGui::Button("Locate")) {
