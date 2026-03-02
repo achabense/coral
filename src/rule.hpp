@@ -33,6 +33,8 @@ namespace iso3 {
     // 2 for debugging.
     static_assert(cellT::states == 2 || cellT::states == 3);
 
+    inline cellT next(const cellT c) { return cellT(c == cellT::max ? 0 : c + 1); }
+
     struct envT {
         cellT data[9] = {}; // {q, w, e, a, s, d, z, x, c}
 
@@ -136,14 +138,7 @@ namespace iso3 {
     // Never returned by value (too large to be stack-allocated).
     using ruleT = codeT_to<cellT>;
 
-    inline cellT increase(const cellT c) { return cellT((c + 1) % cellT::states); }
-
-    inline void increase(ruleT& rule, const groupT group) {
-        assert(!group.empty());
-        rule.fill(group, increase(rule[group[0]]));
-    }
-
-    // TODO: also support totalistic rules.
+    // TODO: support supergroups (for totalistic rules etc.)?
     class isotropic {
         codeT_to<uint16_t> m_map{};
         codeT m_data[codeT::states]{};  // Permutation of all codeT.
@@ -237,10 +232,10 @@ namespace iso3 {
     // (This is designed for cellT::states == 3 but also works when states == 2 (as `count_2` always == 0).)
     inline void to_life(ruleT& rule) {
         for (const groupT group : isotropic::groups()) {
-            envT env = decode(group[0]);
-            const cellT s = std::exchange(env.data[4], cellT(0));
-            const int count_2 = std::ranges::count(env.data, 2);
-            const int count_12 = count_2 + std::ranges::count(env.data, 1);
+            const envT env = decode(group[0]);
+            const cellT s = env.data[4];
+            const int count_2 = std::ranges::count(env.data, 2) - (s == 2);
+            const int count_12 = count_2 + std::ranges::count(env.data, 1) - (s == 1);
             rule.fill(group, count_2 == 3 || (count_2 == 2 && s == 2)     ? cellT(2)
                              : count_12 == 3 || (count_12 == 2 && s != 0) ? cellT(1) // TODO: vs `s == 1`?
                                                                           : cellT(0));
@@ -302,18 +297,36 @@ namespace iso3 {
         }
     }
 
-    inline void rand_rule_totalistic(ruleT& rule, randT& rand, const freqT freq) {
+    // TODO: whether to support sum-based rules? (sum < count < iso)
+    inline void rand_rule_totalistic_sum(ruleT& rule, randT& rand, const freqT freq) {
         const auto rand_cell = rand_cell_from(rand, freq);
         // TODO: workaround for lack of totalistic groups (necessary for random-access editing in the gui).
         std::optional<cellT> values[(cellT::states - 1) * 8 + 1][cellT::states]{};
         for (const groupT group : isotropic::groups()) {
-            envT env = decode(group[0]);
-            const cellT s = std::exchange(env.data[4], cellT(0));
+            const envT env = decode(group[0]);
+            const cellT s = env.data[4];
             int sum = 0;
             for (const cellT c : env.data) {
                 sum += c;
             }
+            sum -= s;
             auto& v = values[sum][s];
+            rule.fill(group, v ? *v : *(v = rand_cell()));
+        }
+    }
+
+    inline void rand_rule_totalistic_count(ruleT& rule, randT& rand, const freqT freq) {
+        const auto rand_cell = rand_cell_from(rand, freq);
+        std::optional<cellT> values[9][9][cellT::states]{};
+        for (const groupT group : isotropic::groups()) {
+            const envT env = decode(group[0]);
+            const cellT s = env.data[4];
+            int count[3]{};
+            for (const cellT c : env.data) {
+                ++count[c];
+            }
+            --count[s];
+            auto& v = values[count[0]][count[1]][s]; // No need for [2] (<-> [0]+[1]).
             rule.fill(group, v ? *v : *(v = rand_cell()));
         }
     }

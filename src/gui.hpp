@@ -928,7 +928,8 @@ public:
             int group_index = 0;
             for (const auto& group : isotropic::groups()) {
                 const codeT group_0 = group[0];
-                if (skip(group_0, rule[group_0])) {
+                const cellT value = rule[group_0];
+                if (skip(group_0, value)) {
                     space_index += cellT::states - 1;
                     continue;
                 }
@@ -944,7 +945,7 @@ public:
                 // TODO: where to open popup? (Window bg or group button?)
                 // if (ImGui::IsItemHovered()) { m_popup.open_on_idle_rclick(-100); }
                 const ImVec2 code_image_max = ImGui::GetItemRectMax();
-                render_cell(rule[group_0], {code_image_max.x - cell_width, code_image_max.y + cell_width});
+                render_cell(value, {code_image_max.x - cell_width, code_image_max.y + cell_width});
                 if (to_locate == group_0) {
                     // More accurate than `ImGui::SetScrollHereY(0)`.
                     ImGui::SetScrollFromPosY(ImGui::GetItemRectMin().y - ImGui::GetWindowPos().y, 0);
@@ -964,8 +965,10 @@ public:
                 }
                 ImGui::SameLine(0, item_spacing);
                 ImGui::BeginGroup();
+                cellT v = value;
                 for (int i = 0; i < cellT::states - 1; ++i) {
-                    iso3::increase(rule, group);
+                    v = iso3::next(v);
+                    rule.fill(group, v);
                     m_spaces.image(rule, space_index++, m_settings, &to_rule);
                     if (ImGui::IsItemVisible()) {
                         const ImVec2 image_min = ImGui::GetItemRectMin();
@@ -975,8 +978,9 @@ public:
                                      image_min.y + std::floor((image_max.y - image_min.y - cell_width) / 2) - 1});
                     }
                 }
+                assert(iso3::next(v) == value);
+                rule.fill(group, value); // Restore.
                 ImGui::EndGroup();
-                iso3::increase(rule, group); // Restored.
             }
 
             imgui_SetScrollWithUpDown(m_spaces.image_size().y * 2 + ImGui::GetStyle().ItemSpacing.y * 3);
@@ -1142,7 +1146,7 @@ private:
                     // Left-click -> change value; right-click -> use clicked value.
                     static_var cellT v = {};
                     if (ImGui::IsItemActivated()) {
-                        v = ImGui::IsMouseClicked(ImGuiMouseButton_Left) ? iso3::increase(cell) : /*rclick*/ cell;
+                        v = ImGui::IsMouseClicked(ImGuiMouseButton_Left) ? iso3::next(cell) : /*rclick*/ cell;
                     }
                     // TODO: support undoing cell values as well (with a separate record & ctrl+Z/Y)?
                     cell = v;
