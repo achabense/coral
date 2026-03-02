@@ -843,7 +843,7 @@ public:
 
             text_with_tooltip( // TODO: support opening link in browser.
                 "About this program",
-                "Coral v0.9 (c) 2025-2026 achabense (https://github.com/achabense/coral)\n\n"
+                "Coral v0.10 WIP (c) 2025-2026 achabense (https://github.com/achabense/coral)\n\n"
                 "This program is for exploring isotropic 3-state CA rules in the range-1 Moore neighborhood.");
             text_with_tooltip( // "Space windows" sounds good, but may confuse with regular windows.
                 "Spaces",
