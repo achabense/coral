@@ -217,7 +217,7 @@ namespace iso3 {
         return true;
     }
 
-    inline void to_zero(ruleT& rule) { rule.fill({}); }
+    inline void to_zero(ruleT& rule) { rule.fill(cellT(0)); }
 
     inline void to_identity(ruleT& rule) {
         for_each_code([&rule](const codeT c) { rule[c] = decode(c, 4); });
@@ -388,6 +388,7 @@ namespace iso3 {
 
         // Due to the huge size, there's no plan to support saving arbitrary 3-state rules.
         // '(' and ')' are not part of the rule-string, but for easier recovery (e.g. when pasted into another string by accident).
+        // TODO: support additional prefix / postfix (e.g. "\n")?
         inline std::string to_string(const ruleT& rule) {
             std::string str(required_size + 2, '\0');
             str.front() = '(';

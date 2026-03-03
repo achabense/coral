@@ -747,6 +747,7 @@ private:
     }
 };
 
+// !!TODO: restore tooltip for purple button (requires double-clicking).
 // TODO: support adding to temp list.
 // TODO: whether to support ctrl shortcuts for spaces (ctrl+scroll/click/Z/Y/C)? (Intentionally undocumented in UI.)
 class main_data : no_copy {
@@ -1016,17 +1017,34 @@ private:
         ImGui::Checkbox("Generate", &m_generator.open);
         item_tooltip("Generate random rules.");
         ImGui::SameLine();
-        const bool to_zero = imgui_DoubleClickButton("Zero");
-        item_tooltip(
-            "Reset to the following rules:\n"
-            "Zero     ~ the rule that maps cell to 0 in all cases (~ the initial rule).\n"
-            "Identity ~ the rule that preserves cell's value in all cases.\n"
-            "Life     ~ a special 3-state version of the Game of Life rule.\n\n"
-            "(Purple buttons like these require double-clicking.)");
-        ImGui::SameLine();
-        const bool to_identity = imgui_DoubleClickButton("Identity");
-        ImGui::SameLine();
-        const bool to_life = imgui_DoubleClickButton("Life");
+        m_popup.button_to_open("Select..", -600);
+        item_tooltip("Select named rules (for editing).");
+        if (m_popup.opened(-600)) { // TODO: improve.
+            ImGui::SetNextWindowPos(ImGui::GetItemRectMin() + ImVec2(ImGui::GetItemRectSize().x, 0));
+        }
+        if (m_popup.begin_popup(-600, false)) {
+            const bool to_zero = ImGui::Selectable("Zero");
+            item_tooltip("The rule that maps cell to 0 in all cases (~ the initial rule).");
+            const bool to_identity = ImGui::Selectable("Identity");
+            item_tooltip("The rule that preserves cell's value in all cases.");
+            const bool to_life = ImGui::Selectable("Life");
+            item_tooltip("A special 3-state version of the Game of Life rule.");
+            m_popup.end_popup();
+
+            if (to_zero || to_identity || to_life) {
+                assert(!to_rule);
+                set_message("Selected.");
+            }
+            if (to_zero) {
+                iso3::to_zero(to_rule.emplace_ex());
+            }
+            if (to_identity) {
+                iso3::to_identity(to_rule.emplace_ex());
+            }
+            if (to_life) {
+                iso3::to_life(to_rule.emplace_ex());
+            }
+        }
         ImGui::SameLine();
         ImGui::BeginDisabled(!m_rule.has_prev());
         // (Left/right as regular shortcuts for <</>>, ctrl+Z/Y as a convenient way to undo/redo ctrl+click selection.)
@@ -1060,21 +1078,6 @@ private:
         }
         item_tooltip("Right-click to set frame rate.");
 
-        if (to_zero || to_identity || to_life) {
-            set_message("Selected.");
-        }
-        if (to_zero) {
-            assert(!to_rule);
-            iso3::to_zero(to_rule.emplace_ex());
-        }
-        if (to_identity) {
-            assert(!to_rule);
-            iso3::to_identity(to_rule.emplace_ex());
-        }
-        if (to_life) {
-            assert(!to_rule);
-            iso3::to_life(to_rule.emplace_ex());
-        }
         if (to_rule) {
             m_rule.set(*to_rule);
             to_rule.reset();
