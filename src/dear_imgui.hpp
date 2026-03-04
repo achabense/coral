@@ -122,7 +122,6 @@ public:
     // (Normally `!IsAnyitemActive()` is enough, but when an input field is accepting input (even if not held), it will also report active id, and it's strange to disable popup in this case. `IsItemHovered()` (for other items) and `IsWindowHovered()` will report false normally when the input field is actually held.)
     void open_on_idle_rclick(int id, bool hovered) {
         if (hovered) {
-            assert(popup_id != 0);
             assert(!imgui_IsItemDisabled());
             if (!owner_id && (!ImGui::IsAnyItemActive() || ImGui::GetIO().WantTextInput) &&
                 ImGui::IsMouseClicked(ImGuiMouseButton_Right) /*&& !ImGui::IsMouseDown(ImGuiMouseButton_Left)*/) {
@@ -199,7 +198,7 @@ public:
     }
 };
 
-// TODO: make this non-blocking?
+// !!TODO: make this non-blocking?
 class file_loader : no_copy {
     std::shared_ptr<void> m_impl{}; // Unique ownership; just for simpler code.
 

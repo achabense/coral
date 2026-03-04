@@ -342,6 +342,14 @@ bool file_loader::display_if_open(std::string& data, const int max_size) {
                 set_message(msg_failed);
             }
         }
+
+        // !!TODO: recheck...
+        // (Undocumented in UI.)
+        if (!ImGui::IsWindowAppearing() && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId) &&
+            ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && !ImGui::IsAnyItemActive() &&
+            !ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows)) {
+            open = false;
+        }
         ImGui::EndPopup();
     }
     return loaded;

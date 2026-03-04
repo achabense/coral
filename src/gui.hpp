@@ -794,6 +794,9 @@ public:
         ImGui::BeginGroup();
         if constexpr (debug_mode) { // Experimental features.
             m_popup.button_to_open("Filter", -300);
+            if (m_popup.opened(-300)) { // !!TODO: improve.
+                ImGui::SetNextWindowPos(ImGui::GetItemRectMin() + ImVec2(ImGui::GetItemRectSize().x, 0));
+            }
             if (m_popup.begin_popup(-300, true)) {
                 if (ImGui::IsWindowAppearing()) {
                     std::memcpy(misc_temp, misc_skip, sizeof(misc_skip));
@@ -1017,7 +1020,7 @@ private:
         ImGui::SameLine();
         m_popup.button_to_open("Select..", -600);
         item_tooltip("Select named rules (for editing).");
-        if (m_popup.opened(-600)) { // TODO: improve.
+        if (m_popup.opened(-600)) { // !!TODO: improve.
             ImGui::SetNextWindowPos(ImGui::GetItemRectMin() + ImVec2(ImGui::GetItemRectSize().x, 0));
         }
         if (m_popup.begin_popup(-600, false)) {
