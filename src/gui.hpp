@@ -429,9 +429,7 @@ public:
 
         const bool can_select = to_rule;
         bool select = false, copy = op == 'C';
-        if (hovered) {
-            m_popup.open_on_idle_rclick(id);
-        }
+        m_popup.open_on_idle_rclick(id, hovered);
         if (m_popup.begin_popup(id, /*lock-scroll*/ true)) {
             select |= can_select && ImGui::Selectable("Select");
             item_tooltip("Select for editing.");
@@ -748,6 +746,7 @@ private:
 };
 
 // !!TODO: restore tooltip for purple button (requires double-clicking).
+// !!TODO: recheck when to lock scroll for popup.
 // TODO: support adding to temp list.
 // TODO: whether to support ctrl shortcuts for spaces (ctrl+scroll/click/Z/Y/C)? (Intentionally undocumented in UI.)
 class main_data : no_copy {
@@ -901,9 +900,8 @@ public:
             // std::optional<codeT> to_locate = std::nullopt;
             int to_locate = -1;
             // TODO: support ctrl+F?
-            if (ImGui::IsWindowHovered() /*child only*/ && !ImGui::IsAnyItemHovered() /*bg only*/) {
-                m_popup.open_on_idle_rclick(-100);
-            }
+            m_popup.open_on_idle_rclick(-100, ImGui::IsWindowHovered() /*child only*/ &&
+                                                  !ImGui::IsAnyItemHovered() /*bg only*/);
             if (m_popup.opened(-100) /*micro optimization*/ &&
                 m_popup.begin_popup(-100, !ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem |
                                                                   ImGuiHoveredFlags_AllowWhenBlockedByPopup))) {

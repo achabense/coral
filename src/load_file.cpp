@@ -254,9 +254,7 @@ public:
                 if (std::exchange(first, false)) {
                     item_tooltip("Right-click to copy path.");
                 }
-                if (ImGui::IsItemHovered()) {
-                    m_popup.open_on_idle_rclick(id);
-                }
+                m_popup.open_on_idle_rclick(id, ImGui::IsItemHovered());
                 if (m_popup.begin_popup(id, true)) {
                     if (ImGui::Selectable("Copy path")) {
                         copy_path(m_current / entry.filename);

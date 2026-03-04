@@ -109,7 +109,7 @@ public:
     void button_to_open(const char* label, int id) {
         // ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImGui::GetStyleColorVec4(ImGuiCol_ButtonHovered));
         ImGui::PushStyleColor(ImGuiCol_Button,
-                              ImGui::GetStyleColorVec4(opened(id) ? ImGuiCol_ButtonHovered : ImGuiCol_Button));
+                              ImGui::GetStyleColorVec4(owner_id == id ? ImGuiCol_ButtonHovered : ImGuiCol_Button));
         if (ImGui::Button(label)) {
             open(id);
         }
@@ -120,24 +120,23 @@ public:
     // Workaround to enable popup when an input field is active but not held.
     // Must work in combination with some hover test & should not apply to input field itself.
     // (Normally `!IsAnyitemActive()` is enough, but when an input field is accepting input (even if not held), it will also report active id, and it's strange to disable popup in this case. `IsItemHovered()` (for other items) and `IsWindowHovered()` will report false normally when the input field is actually held.)
-    void open_on_idle_rclick(int id /*, bool hovered*/) {
-        // if (!hovered) { return; }
-        assert(popup_id != 0);
-        assert(!imgui_IsItemDisabled());
-        if (!owner_id && (!ImGui::IsAnyItemActive() || ImGui::GetIO().WantTextInput) &&
-            ImGui::IsMouseClicked(ImGuiMouseButton_Right) /*&& !ImGui::IsMouseDown(ImGuiMouseButton_Left)*/) {
-            open(id); // TODO: slightly wasteful.
+    void open_on_idle_rclick(int id, bool hovered) {
+        if (hovered) {
+            assert(popup_id != 0);
+            assert(!imgui_IsItemDisabled());
+            if (!owner_id && (!ImGui::IsAnyItemActive() || ImGui::GetIO().WantTextInput) &&
+                ImGui::IsMouseClicked(ImGuiMouseButton_Right) /*&& !ImGui::IsMouseDown(ImGuiMouseButton_Left)*/) {
+                open(id);
+            }
         }
     }
 
     void open_for_text(int id, bool hovered) {
-        if (hovered || opened(id)) {
+        if (hovered || owner_id == id) {
             const ImVec2 min = ImGui::GetItemRectMin();
             const ImVec2 max = ImGui::GetItemRectMax();
             ImGui::GetWindowDrawList()->AddLine(ImVec2(min.x, max.y), max, ImGui::GetColorU32(ImGuiCol_Text));
-            if (hovered) {
-                open_on_idle_rclick(id);
-            }
+            open_on_idle_rclick(id, hovered);
         }
     }
 
