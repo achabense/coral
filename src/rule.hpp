@@ -283,6 +283,7 @@ namespace iso3 {
         return [&rand, cp = int(65536 * std::clamp(p, 0.0, 1.0))] { return (rand() & 65535) < cp; };
     }
 
+    // (Also isotropic but too random.)
     inline void rand_rule(ruleT& rule, randT& rand) {
         const auto rand_cell = rand_cell_from(rand);
         for (const groupT group : isotropic::groups()) {
@@ -290,7 +291,7 @@ namespace iso3 {
         }
     }
 
-    inline void rand_rule(ruleT& rule, randT& rand, const freqT freq) {
+    inline void rand_rule_iso(ruleT& rule, randT& rand, const freqT freq) {
         const auto rand_cell = rand_cell_from(rand, freq);
         for (const groupT group : isotropic::groups()) {
             rule.fill(group, rand_cell());
@@ -298,9 +299,8 @@ namespace iso3 {
     }
 
     // TODO: whether to support sum-based rules? (sum < count < iso)
-    inline void rand_rule_totalistic_sum(ruleT& rule, randT& rand, const freqT freq) {
+    inline void rand_rule_sum(ruleT& rule, randT& rand, const freqT freq) {
         const auto rand_cell = rand_cell_from(rand, freq);
-        // TODO: workaround for lack of totalistic groups (necessary for random-access editing in the gui).
         std::optional<cellT> values[(cellT::states - 1) * 8 + 1][cellT::states]{};
         for (const groupT group : isotropic::groups()) {
             const envT env = decode(group[0]);
@@ -315,7 +315,7 @@ namespace iso3 {
         }
     }
 
-    inline void rand_rule_totalistic_count(ruleT& rule, randT& rand, const freqT freq) {
+    inline void rand_rule_count(ruleT& rule, randT& rand, const freqT freq) {
         const auto rand_cell = rand_cell_from(rand, freq);
         std::optional<cellT> values[9][9][cellT::states]{};
         for (const groupT group : isotropic::groups()) {
@@ -473,7 +473,7 @@ namespace iso3 {
         verify(extract_rule(b, str1) && b == a);
         verify(extract_rule(b, str2) && b == a);
         // TODO: should also test with predefined rule string.
-        // a = ...; const char* str3 = ...; verify(extract_rule(b, str3, iso) && b == a);
+        // a = ...; const char* str3 = ...; verify(extract_rule(b, str3) && b == a);
     }
 
     // Format: [012*abc]{9}|[012i] (*~0/1/2, a~1/2, b~0/2, c~0/1, i~center cell)

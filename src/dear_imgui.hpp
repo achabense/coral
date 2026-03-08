@@ -20,6 +20,8 @@ extern bool imgui_IsItemDisabled();
 
 extern void imgui_HighlightItem(ImGuiID id);
 
+extern void imgui_ActivateItem(ImGuiID id);
+
 // Necessary for `shared_popup` below (to be shared across windows).
 // Unfortunately not exposed in "imgui.h". Related: https://github.com/ocornut/imgui/pull/8995
 extern bool imgui_BeginPopupEx(ImGuiID id, ImGuiWindowFlags flags = 0);

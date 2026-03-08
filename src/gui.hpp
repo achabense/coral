@@ -1,5 +1,7 @@
 #pragma once
+#define _CRT_SECURE_NO_WARNINGS
 
+#include <cstdio>
 #include <ctime>
 #include <unordered_map>
 
@@ -291,6 +293,7 @@ public:
     // bool tick() const { return interval == 1 || (ImGui::GetFrameCount() % interval) == 0; }
 
     void header() {
+        // TODO: should this require hovered or focused?
         shortcut_group shortcut{no_active_and_window_hovered()}; // Instead of focused.
 
         if (ImGui::Button("Restart") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_R, repeat_mode::no_repeat)) {
@@ -496,17 +499,22 @@ private:
 };
 
 // TODO: support configurable page size.
-// TODO: support more generating modes.
 class rule_generator : no_copy {
     static constexpr int page_x = 3, page_y = 2, page_size = page_x * page_y;
 
     ring_buffer<ruleT> m_rules{page_size * 20};
     int m_pos = 0; // Position for the first rule in the page.
 
-    enum class rand_mode { p, n };
-    rand_mode m_mode = rand_mode::p;
-    int m_dist = 10;  // p ~ possibility (percentage), n ~ exact dist
-    opt_rule m_rel{}; // Relative to `m_rel ? *m_rel : rel`.
+    // !!TODO: messy...
+    bool m_abs = true;
+    // Abs mode:
+    iso3::freqT m_freq{8, 2, 1};
+    char m_alg = 'i'; // i(so)/s(um)/c(ount)
+    // Rel mode:
+    int m_dist = 10;
+    char m_unit = '%'; // '\0'/%
+    opt_rule m_rel{};  // Relative to `m_rel ? *m_rel : rel`.
+    // TODO: decouple around/exact mode from unit (number/%)?
 
     space_settings m_settings{};
 
@@ -568,7 +576,7 @@ private:
             "<<  (Left      ) ~ get to the previous page.\n"
             ">>> (Right     ) ~ get to the next page or generate a new page.\n"
             "|>  (Ctrl+Right) ~ get to the last page.\n\n"
-            "\">>>\" generates new pages of random rules when at the last page (or when there are no rules). See the tooltip for \"P\" for more details.\n\n"
+            "\">>>\" generates new pages of random rules when at the last page (or when there are no rules). See the tooltip for [!!TODO] for more details.\n\n"
             "(Try the shortcuts to see how these work.)");
         ImGui::SameLine();
         if (ImGui::Button(">>>") || shortcut(ctrl_mode::no_ctrl, ImGuiKey_RightArrow, repeat_mode::no_repeat)) {
@@ -579,12 +587,18 @@ private:
                 rand.discard(uint32_t(std::time(0)) % 8); // Additional entropy.
                 const int num = m_rules.size() < page_end ? page_end - m_rules.size() : page_size;
                 for (int i = 0; i < num; ++i) {
-                    // iso3::rand_rule(m_rules.emplace_back_ex(), rand, {64, 4, 1});
-                    ruleT& rule = m_rules.emplace_back(m_rel ? *m_rel : rel);
-                    if (m_mode == rand_mode::p) {
-                        iso3::randomize_p(rule, rand, m_dist / 100.0);
+                    // !!TODO: recheck...
+                    if (m_abs) {
+                        (m_alg == 's'   ? iso3::rand_rule_sum
+                         : m_alg == 'c' ? iso3::rand_rule_count
+                                        : iso3::rand_rule_iso)(m_rules.emplace_back_ex(), rand, m_freq);
                     } else {
-                        iso3::randomize_n(rule, rand, m_dist);
+                        ruleT& rule = m_rules.emplace_back(m_rel ? *m_rel : rel);
+                        if (m_unit == '%') {
+                            iso3::randomize_p(rule, rand, m_dist / 100.0);
+                        } else {
+                            iso3::randomize_n(rule, rand, m_dist);
+                        }
                     }
                 }
                 assert(m_rules.size() >= page_size);
@@ -600,36 +614,85 @@ private:
             m_pos = m_rules.size() - page_size;
         }
         ImGui::EndDisabled();
+
+        // !!TODO: improve & add tooltip...
+        static_var /*temp*/ char input_spec[20]{};
         ImGui::SameLine();
-        if (ImGui::RadioButton("P", m_mode == rand_mode::p)) {
-            m_mode = rand_mode::p;
-        }
-        item_tooltip(
-            "The \"distance\" (number of groups with different values) is relative to the selected rule.\n\n"
-            "P ~ around p% groups will have different values.\n"
-            "N ~ exactly n groups will have different values.\n\n"
-            "(P is suitable for making random discoveries; N is suitable for searching around specific rules.)");
-        ImGui::SameLine();
-        if (ImGui::RadioButton("N", m_mode == rand_mode::n)) {
-            m_mode = rand_mode::n;
+        if (ImGui::RadioButton("Abs", m_abs)) {
+            m_abs = true;
+            input_spec[0] = '\0';
         }
         ImGui::SameLine();
-        // TODO: the label is not accurate enough. (randomize_n() uses exact dist, while randomize_p() uses possibility.)
-        imgui_SliderIntEx(ImGui::GetFontSize() * 10, "##Dist", m_dist, 0, 100, true,
-                          m_mode == rand_mode::n ? "Dist: %d" : "Dist: %d%%");
+        if (ImGui::RadioButton("Rel", !m_abs)) {
+            m_abs = false;
+            input_spec[0] = '\0';
+        }
+        if (!input_spec[0]) {
+            if (m_abs) {
+                assert(cellT::states == 3);
+                std::snprintf(input_spec, std::size(input_spec), "%c|%d|%d|%d", m_alg, m_freq[0], m_freq[1], m_freq[2]);
+            } else {
+                std::snprintf(input_spec, std::size(input_spec), "%d%c", m_dist, m_unit);
+            }
+        }
+
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(ImGui::GetFontSize() * 8 /*10*/);
+        // !!TODO: whether to support this shortcut? (Will automatically select all text.)
+        if (shortcut(ctrl_mode::no_ctrl, ImGuiKey_Enter, repeat_mode::no_repeat, 0)) {
+            imgui_ActivateItem(ImGui::GetID("##Input"));
+        }
+        if (ImGui::InputText("##Input", input_spec, std::size(input_spec),
+                             ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CharsNoBlank)) {
+            bool failed = true;
+            if (m_abs) {
+                iso3::freqT freq{};
+                char alg{}, end{};
+                if (std::sscanf(input_spec, "%c|%d|%d|%d%c", &alg, &freq[0], &freq[1], &freq[2], &end) == 4) {
+                    if (alg == 'i' || alg == 's' || alg == 'c') {
+                        failed = false;
+                        // !!TODO: uncertain about range & clamp or reject...
+                        if (!freq[0] && !freq[1] && !freq[2]) {
+                            freq[0] = freq[1] = freq[2] = 1;
+                        }
+                        m_alg = alg;
+                        m_freq = {std::clamp(freq[0], 0, 100), std::clamp(freq[1], 0, 100),
+                                  std::clamp(freq[2], 0, 100)};
+                    }
+                }
+            } else {
+                int dist{};
+                char unit{}, end{};
+                if (const int r = std::sscanf(input_spec, "%d%c%c", &dist, &unit, &end); 1 <= r && r <= 2) {
+                    if (unit == '%' || unit == '\0') {
+                        failed = false;
+                        m_unit = unit;
+                        m_dist = std::clamp(dist, 0, unit == '%' ? 100 : iso3::isotropic::k);
+                    }
+                }
+            }
+            if (failed) {
+                set_message("!!TODO");
+            }
+        }
+        if (ImGui::IsItemDeactivated()) {
+            input_spec[0] = '\0';
+        }
+
         // TODO: should be able to visualize the rule...
         // (Ideally the locked rule should be shown in a separate window, but it's hard to control z-order in imgui...)
         if constexpr (debug_mode) {
-            ImGui::SameLine();
-            if (bool locked = bool(m_rel); ImGui::Checkbox("Lock", &locked)) {
-                if (!m_rel) {
-                    m_rel.emplace(rel);
-                    set_message("Locked.");
-                } else {
-                    m_rel.reset();
+            if (!m_abs) {
+                ImGui::SameLine();
+                if (bool locked = bool(m_rel); ImGui::Checkbox("Lock", &locked)) {
+                    if (!m_rel) {
+                        m_rel.emplace(rel);
+                        set_message("Locked.");
+                    } else {
+                        m_rel.reset();
+                    }
                 }
             }
-            // item_tooltip("See the tooltip for \"P\" for details.");
         }
 
         ImGui::Separator();
@@ -1141,7 +1204,7 @@ private:
         ImGui::InvisibleButton("Cells", ImVec2(scale * 3, scale * 3),
                                ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
         if (ImGui::IsItemVisible()) {
-            const ImVec2 min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
+            const ImVec2 min = ImGui::GetItemRectMin();
             render_code<true>(iso3::encode(cells), scale, min, *ImGui::GetWindowDrawList());
             if (ImGui::IsItemActive() && ImGui::IsItemHovered() && ImGui::IsMousePosValid()) {
                 const ImVec2 pos = imgui_Floor((ImGui::GetMousePos() - min) / scale);

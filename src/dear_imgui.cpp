@@ -25,6 +25,8 @@ void imgui_HighlightItem(ImGuiID id) {
     }
 }
 
+void imgui_ActivateItem(ImGuiID id) { ImGui::ActivateItemByID(id); }
+
 // !!TODO: recheck interaction with input fields...
 bool imgui_BeginPopupEx(ImGuiID id, ImGuiWindowFlags flags) {
     if (ImGui::BeginPopupEx(id, flags | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar |
