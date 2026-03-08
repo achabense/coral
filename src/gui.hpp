@@ -29,13 +29,9 @@ inline randT& get_rand() {
 // TODO: support specifying colors? (Shouldn't affect `render_code()`.)
 // (So for example, may map two values to the same color to see how the 3rd value appear in the pattern.)
 inline ImU32 color_for(const cellT c) {
-    if constexpr (cellT::states == 2) {
-        static constexpr ImU32 colors[3]{IM_COL32_BLACK, IM_COL32_WHITE};
-        return colors[c];
-    } else {
-        static constexpr ImU32 colors[3]{IM_COL32_BLACK, IM_COL32(128, 128, 128, 255), IM_COL32_WHITE};
-        return colors[c];
-    }
+    static_assert(cellT::states == 3);
+    static constexpr ImU32 colors[3]{IM_COL32_BLACK, IM_COL32(128, 128, 128, 255), IM_COL32_WHITE};
+    return colors[c];
 }
 
 extern void set_framerate();
@@ -105,11 +101,7 @@ public:
         if (step > 0) {
             m_sync = false;
             for (int i = 0; i < step; ++i) {
-                if constexpr (cellT::states == 3) {
-                    m_tile.run_ex(rule);
-                } else {
-                    m_tile.run(rule);
-                }
+                m_tile.run_ex(rule);
             }
         }
     }
@@ -629,7 +621,7 @@ private:
         }
         if (!input_spec[0]) {
             if (m_abs) {
-                assert(cellT::states == 3);
+                static_assert(cellT::states == 3);
                 std::snprintf(input_spec, std::size(input_spec), "%c|%d|%d|%d", m_alg, m_freq[0], m_freq[1], m_freq[2]);
             } else {
                 std::snprintf(input_spec, std::size(input_spec), "%d%c", m_dist, m_unit);

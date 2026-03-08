@@ -29,10 +29,6 @@ namespace iso3 {
     }
     using _cellT_::cellT;
 
-    // TODO: this is causing trouble. (states == 2 is only used for early testing but have to be considered in many algos...)
-    // 2 for debugging.
-    static_assert(cellT::states == 2 || cellT::states == 3);
-
     inline cellT next(const cellT c) { return cellT(c == cellT::max ? 0 : c + 1); }
 
     struct envT {
@@ -149,7 +145,8 @@ namespace iso3 {
         isotropic& operator=(const isotropic&) = delete;
 
         // int k() const { return m_groups.size(); }
-        static constexpr int k = cellT::states == 2 ? 102 : 2862;
+        static_assert(cellT::states == 3);
+        static constexpr int k = 2862;
 
         std::span<const groupT> _groups() const { return m_groups; }
         groupT _group_for(const codeT c) const { return m_groups[m_map[c]]; }
@@ -190,7 +187,7 @@ namespace iso3 {
                 }
             });
 
-            // const int _k_ = m_groups.size(); // 2 ~ 102, 3 ~ 2862.
+            // const int _k_ = m_groups.size(); // 2862.
             verify(data_pos == codeT::states);
             verify(m_groups.size() == k);
         }
@@ -229,7 +226,6 @@ namespace iso3 {
     // (The same applies to other state mappings like cellT(0) ~ "0", (1) & (2) ~ "1".)
 
     // This is more special as it emulates gol at two levels (cellT(2) ~ "living", but also emulates another level of gol in the "dead" area (cellT(0) ~ "truly dead")).
-    // (This is designed for cellT::states == 3 but also works when states == 2 (as `count_2` always == 0).)
     inline void to_life(ruleT& rule) {
         for (const groupT group : isotropic::groups()) {
             const envT env = decode(group[0]);
@@ -249,12 +245,9 @@ namespace iso3 {
     using freqT = std::array<int, cellT::states>; // [i] for cellT(i).
 
     inline cellT rand_cell_other_than(const cellT c, randT& rand) {
-        if constexpr (cellT::states == 2) {
-            return cellT(!c);
-        } else {
-            static constexpr cellT values[3][2]{{cellT(1), cellT(2)}, {cellT(0), cellT(2)}, {cellT(0), cellT(1)}};
-            return values[c][rand() & 1];
-        }
+        static_assert(cellT::states == 3);
+        static constexpr cellT values[3][2]{{cellT(1), cellT(2)}, {cellT(0), cellT(2)}, {cellT(0), cellT(1)}};
+        return values[c][rand() & 1];
     }
 
     inline auto rand_cell_from(randT& rand) {
@@ -263,19 +256,12 @@ namespace iso3 {
 
     inline auto rand_cell_from(randT& rand, const freqT freq) {
         // Also, the sum should not be too large.
-        if constexpr (cellT::states == 2) {
-            assert(freq[0] >= 0 && freq[1] >= 0 && (freq[0] + freq[1] > 0));
-            return [&rand, c0 = freq[0], c1 = freq[0] + freq[1]] {
-                const int i = rand() % c1;
-                return cellT(i < c0 ? 0 : 1);
-            };
-        } else {
-            assert(freq[0] >= 0 && freq[1] >= 0 && freq[2] >= 0 && (freq[0] + freq[1] + freq[2] > 0));
-            return [&rand, c0 = freq[0], c1 = freq[0] + freq[1], c2 = freq[0] + freq[1] + freq[2]] {
-                const int i = rand() % c2;
-                return cellT(i < c0 ? 0 : i < c1 ? 1 : 2);
-            };
-        }
+        static_assert(cellT::states == 3);
+        assert(freq[0] >= 0 && freq[1] >= 0 && freq[2] >= 0 && (freq[0] + freq[1] + freq[2] > 0));
+        return [&rand, c0 = freq[0], c1 = freq[0] + freq[1], c2 = freq[0] + freq[1] + freq[2]] {
+            const int i = rand() % c2;
+            return cellT(i < c0 ? 0 : i < c1 ? 1 : 2);
+        };
     }
 
     inline auto rand_p_from(randT& rand, const double p) {
@@ -356,19 +342,15 @@ namespace iso3 {
         constexpr bool is_012(const char ch) { return ch == '0' || ch == '1' || ch == '2'; }
 
         constexpr char to_char(const std::array<cellT, 3> arr) {
-            static_assert(pow_cs(3) <= 27);
+            static_assert(cellT::states == 3 && pow_cs(3) == 27);
             const int val = arr[0] * pow_cs(0) + arr[1] * pow_cs(1) + arr[2] * pow_cs(2);
             assert(0 <= val && val < pow_cs(3));
             return "0123456789abcdefghijklmnopqrstuvwxyz"[val]; // Longer than necessary.
         }
 
         constexpr bool is_char(const char ch) {
-            if constexpr (cellT::states == 2) {
-                return '0' <= ch && ch <= '7';
-            } else {
-                constexpr char max_ch = to_char({cellT::max, cellT::max, cellT::max});
-                return ('0' <= ch && ch <= '9') || ('a' <= ch && ch <= max_ch);
-            }
+            constexpr char max_ch = to_char({cellT::max, cellT::max, cellT::max});
+            return ('0' <= ch && ch <= '9') || ('a' <= ch && ch <= max_ch);
         }
 
         constexpr std::array<cellT, 3> from_char(const char ch) {
@@ -648,7 +630,7 @@ namespace iso3 {
         // 2025/12/25 & 2026/2/22.
         // Optimized version of run(); hope nothing can be worse than this in this project...
         void run_ex(const ruleT& rule) {
-            assert(cellT::states == 3); // && encoding ~ q*1 + w*3 + e*9 + a*27 + ...
+            static_assert(cellT::states == 3); // && encoding ~ q*1 + w*3 + e*9 + a*27 + ...
             assert(m_data);
             if (!m_data) {
                 return;
@@ -721,10 +703,8 @@ namespace iso3 {
         tileT b = a;
         b.run(*identity);
         verify(b == a);
-        if constexpr (cellT::states == 3) {
-            b.run_ex(*identity);
-            verify(b == a);
-        }
+        b.run_ex(*identity);
+        verify(b == a);
     }
 
     inline void test_all(randT& rand) {
