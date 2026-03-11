@@ -4,6 +4,7 @@
 #include <array>
 #include <cassert>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <optional>
@@ -19,7 +20,8 @@
 namespace iso3 {
     inline void verify(bool v) {
         if (!v) {
-            throw 0;
+            assert(false);
+            std::abort();
         }
     }
 
@@ -162,7 +164,7 @@ namespace iso3 {
         static codeT head_for(const codeT c) { return _get()._head_for(c); }
 
     private:
-        explicit isotropic() noexcept /*terminates (supposed to be impossible)*/ {
+        explicit isotropic() {
             m_groups.reserve(k);
 
             m_map.fill(UINT16_MAX);
