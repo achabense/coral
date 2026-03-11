@@ -774,12 +774,17 @@ private:
                 extract_rules(str);
             }
         }
+        if (m_rules.size() > 1) { // !!TODO: improve.
+            ImGui::SameLine();
+            ImGui::Text("%d rules", (int)m_rules.size());
+        }
 
         ImGui::Separator();
         m_settings.header();
     }
 
-    void extract_rules(std::string_view str, int reserve = 8, int max = 100) {
+    // !!TODO: set message when reaches `max`?
+    void extract_rules(std::string_view str, int reserve = 8, int max = 200) {
         std::vector<ruleT> rules{};
         rules.reserve(reserve);
         for (int i = 0; i < max; ++i) {
