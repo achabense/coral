@@ -491,9 +491,9 @@ private:
 };
 
 // !!TODO: improve.
-inline const iso3::setT& get_set(char set) {
-    assert(set == 'i' || set == 's' || set == 'c');
-    return set == 'i' ? iso3::isotropic() : set == 's' ? iso3::set_sum() : iso3::set_count();
+inline const iso3::setT& get_set(const char set) {
+    assert(set == 'i' || set == 't');
+    return set == 'i' ? iso3::isotropic() : iso3::totalistic();
 }
 
 // TODO: support configurable page size.
@@ -505,7 +505,7 @@ class rule_generator : no_copy {
 
     // !!TODO: messy...
     // !!TODO: support default set ('\0' -> same as editing?)
-    char m_set = 'i'; // i(so)/s(um)/c(ount)
+    char m_set = 'i'; // i(so)/t(ot)
     bool m_abs = true;
     // Abs mode:
     iso3::freqT m_freq{8, 2, 1};
@@ -646,7 +646,7 @@ private:
                 iso3::freqT freq{};
                 char set{}, end{};
                 if (std::sscanf(input_spec, "%c|%d|%d|%d%c", &set, &freq[0], &freq[1], &freq[2], &end) == 4) {
-                    if (set == 'i' || set == 's' || set == 'c') {
+                    if (set == 'i' || set == 't') {
                         failed = false;
                         // !!TODO: uncertain about range & clamp or reject...
                         if (!freq[0] && !freq[1] && !freq[2]) {
@@ -661,7 +661,7 @@ private:
                 int dist{};
                 char set{}, unit{}, end{};
                 if (const int r = std::sscanf(input_spec, "%c|%d%c%c", &set, &dist, &unit, &end); 2 <= r && r <= 3) {
-                    if ((set == 'i' || set == 's' || set == 'c') && (unit == '%' || unit == '\0')) {
+                    if ((set == 'i' || set == 't') && (unit == '%' || unit == '\0')) {
                         failed = false;
                         m_set = set;
                         m_unit = unit;
@@ -867,20 +867,16 @@ public:
                 m_set = 'i';
             }
             ImGui::SameLine();
-            if (ImGui::RadioButton("Cnt", m_set == 'c')) { // !!TODO: -> num/tot?
-                m_set = 'c';
-            }
-            ImGui::SameLine();
-            if (ImGui::RadioButton("Sum", m_set == 's')) {
-                m_set = 's';
-            }
-            if (old_s != m_set) {
-                m_settings.restart_all();
+            if (ImGui::RadioButton("Tot", m_set == 't')) {
+                m_set = 't';
             }
             // !!TODO: wasteful.
             if (!get_set(m_set).contains(rule)) {
                 ImGui::SameLine();
                 imgui_TextDisabled("(x)");
+            }
+            if (old_s != m_set) {
+                m_settings.restart_all();
             }
         }
         if constexpr (debug_mode) { // Experimental features.

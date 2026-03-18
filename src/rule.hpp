@@ -235,7 +235,8 @@ namespace iso3 {
         }>();
     }
 
-    inline const setT& set_count() {
+    // Count-based.
+    inline const setT& totalistic() {
         return setT::global<*+[](codeT_to<uint16_t>& m_map) {
             for_each_code([&](const codeT code) {
                 static_assert(cellT::states == 3);
@@ -252,8 +253,8 @@ namespace iso3 {
         }>();
     }
 
-    // !!TODO: whether to support sum set (sum < count < iso)?
-    inline const setT& set_sum() {
+    // TODO: whether to support sum-based set (sum < count < iso)?
+    [[deprecated]] inline const setT& totalitsic_opt() {
         return setT::global<*+[](codeT_to<uint16_t>& m_map) {
             for_each_code([&](const codeT code) {
                 const envT env = decode(code);
