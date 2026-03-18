@@ -33,10 +33,15 @@ namespace iso3 {
 
     inline cellT next(const cellT c) { return cellT(c == cellT::max ? 0 : c + 1); }
 
+    inline cellT prev(const cellT c) { return cellT(c == 0 ? cellT::max : c - 1); }
+
     struct envT {
         cellT data[9] = {}; // {q, w, e, a, s, d, z, x, c}
 
         friend bool operator==(const envT& a, const envT& b) { return !std::memcmp(a.data, b.data, sizeof(data)); }
+
+        cellT& s() { return data[4]; }
+        const cellT& s() const { return data[4]; }
 
         envT diag() const {
             const auto& [q, w, e, a, s, d, z, x, c] = data;
@@ -62,7 +67,8 @@ namespace iso3 {
     }
     using _codeT_::codeT;
 
-    // Note: the encoding must not be changed, as `to_string(ruleT)` depends on it (actually the order of `isotropic::groups()`).
+    // !!TODO: reconsider.
+    // Note: the encoding must not be changed, as `to_string(ruleT)` depends on it (actually the order of `isotropic().groups()`).
     // (It's possible to remove the dependency by defining a separate sampling order, but that's costly...)
     inline codeT encode(const envT env) {
         const auto& [q, w, e, a, s, d, z, x, c] = env.data;
@@ -89,6 +95,8 @@ namespace iso3 {
                                      pow_cs(5), pow_cs(6), pow_cs(7), pow_cs(8)};
         return cellT((c / pows[index]) % cellT::states);
     }
+
+    inline cellT decode_s(const codeT c) { return decode(c, 4); }
 
     inline void for_each_code(const auto fn)
         requires(requires { fn(codeT(0)); })
@@ -125,6 +133,9 @@ namespace iso3 {
         T& operator[](const codeT c) { return m_data[c]; }
         const T& operator[](const codeT c) const { return m_data[c]; }
 
+        std::span<T> data() { return m_data; }
+        std::span<const T> data() const { return m_data; }
+
         // Note: defaulted operator== for C-arrays is buggy in MSVC.
         friend bool operator==(const codeT_to& a, const codeT_to& b)
             requires(std::is_same_v<T, cellT>)
@@ -136,90 +147,138 @@ namespace iso3 {
     // Never returned by value (too large to be stack-allocated).
     using ruleT = codeT_to<cellT>;
 
-    // TODO: support supergroups (for totalistic rules etc.)?
-    class isotropic {
+    // TODO: actually just partition. (`contains()` assumes same value for each group; working for now.)
+    class setT {
         codeT_to<uint16_t> m_map{};
-        codeT m_data[codeT::states]{};  // Permutation of all codeT.
-        std::vector<groupT> m_groups{}; // TODO: use array instead?
+        codeT m_data[codeT::states]{}; // Permutation of all codeT.
+        std::vector<groupT> m_groups{};
 
     public:
-        isotropic(const isotropic&) = delete;
-        isotropic& operator=(const isotropic&) = delete;
+        setT(const setT&) = delete;
+        setT& operator=(const setT&) = delete;
 
-        // int k() const { return m_groups.size(); }
-        static_assert(cellT::states == 3);
-        static constexpr int k = 2862;
+        int k() const { return m_groups.size(); }
+        std::span<const groupT> groups() const { return m_groups; }
+        groupT group_for(const codeT c) const { return m_groups[m_map[c]]; }
 
-        std::span<const groupT> _groups() const { return m_groups; }
-        groupT _group_for(const codeT c) const { return m_groups[m_map[c]]; }
-        codeT _head_for(const codeT c) const { return m_groups[m_map[c]][0]; }
-
-        static const isotropic& _get() {
-            static const isotropic iso{};
-            return iso;
+        bool contains(const ruleT& rule) const {
+            for (const groupT group : m_groups) {
+                const cellT v = rule[group[0]];
+                for (const codeT code : group.subspan(1)) {
+                    if (v != rule[code]) {
+                        return false;
+                    }
+                }
+            }
+            return true;
         }
 
-        static std::span<const groupT> groups() { return _get()._groups(); }
-        static groupT group_for(const codeT c) { return _get()._group_for(c); }
-        static codeT head_for(const codeT c) { return _get()._head_for(c); }
+        template <void (&fill_map)(codeT_to<uint16_t>&)>
+        static const setT& global() {
+            static const setT set(fill_map);
+            return set;
+        }
 
     private:
-        explicit isotropic() {
-            m_groups.reserve(k);
-
-            m_map.fill(UINT16_MAX);
-            int data_pos = 0;
-            for_each_code([&](const codeT code) {
-                if (m_map[code] == UINT16_MAX) {
-                    const envT env1 = decode(code), env2 = env1.rotate();
-                    const envT env3 = env2.rotate(), env4 = env3.rotate();
-                    codeT group[8]{encode(env1), encode(env1.diag()), encode(env2), encode(env2.diag()),
-                                   encode(env3), encode(env3.diag()), encode(env4), encode(env4.diag())};
-                    std::ranges::sort(group); // v `ranges::unique()` returns range to be excluded.
-                    const std::ranges::subrange unique(group, std::ranges::unique(group).begin());
-                    assert(!unique.empty());
-
-                    m_groups.push_back(groupT(m_data + data_pos, unique.size()));
-                    const int index = m_groups.size() - 1;
-                    for (const codeT c : unique) {
-                        m_map[c] = index;
-                        m_data[data_pos++] = c;
+        explicit setT(void (&fill_map)(codeT_to<uint16_t>&)) {
+            fill_map(m_map);
+            int k = 0;
+            std::vector<int> count{}; // [m_map[code]]
+            {
+                const int max = *std::ranges::max_element(m_map.data());
+                verify(max <= 5000);
+                count.resize(max + 1);
+                std::vector<uint16_t> normalize(max + 1, UINT16_MAX /*unmapped*/);
+                for_each_code([&](const codeT code) {
+                    uint16_t& v = normalize[m_map[code]];
+                    if (v == UINT16_MAX) {
+                        v = k++;
                     }
-                    assert(m_map[code] != UINT16_MAX);
-                }
-            });
+                    m_map[code] = v;
+                    ++count[v];
+                });
+                // `k` ~ number of groups
+            }
+            m_groups.resize(k);
+            for (int prefix = 0, i = 0; i < k; ++i) {
+                m_groups[i] = {m_data + prefix, (size_t)count[i]};
+                count[i] = std::exchange(prefix, prefix + count[i]);
+                // `count` ~ pos to fill
+            }
+            for_each_code([&](const codeT code) { m_data[count[m_map[code]]++] = code; });
 
-            // const int _k_ = m_groups.size(); // 2862.
-            verify(data_pos == codeT::states);
-            verify(m_groups.size() == k);
+            // Related: https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2024/p3136r1.html ("Retiring niebloids")
+            verify(std::ranges::all_of(m_groups, std::ranges::is_sorted /*see above*/));
+            verify(std::ranges::is_sorted(m_groups, [](const groupT a, const groupT b) { return a[0] < b[0]; }));
+            for (const groupT group : m_groups) {
+                for (const codeT c : group) {
+                    verify(group_for(c).data() == group.data());
+                }
+            }
         }
     };
 
-    inline void test_iso() {
-        const isotropic& iso = isotropic::_get(); // For performance.
-        for (const groupT group : iso._groups()) {
-            for (const codeT c : group) {
-                verify(iso._group_for(c).data() == group.data());
-            }
-        }
+    inline const setT& isotropic() {
+        return setT::global<*+[](codeT_to<uint16_t>& m_map) {
+            m_map.fill(UINT16_MAX /*unmapped*/);
+            int k = 0;
+            for_each_code([&](const codeT code) {
+                if (m_map[code] == UINT16_MAX) {
+                    const int v = k++;
+                    envT env = decode(code);
+                    for (int i = 0; i < 4; ++i) {
+                        m_map[encode(env)] = m_map[encode(env.diag())] = v;
+                        env = env.rotate();
+                    }
+                }
+            });
+        }>();
     }
 
-    inline bool is_isotropic(const ruleT& rule) {
-        for (const groupT group : isotropic::groups()) {
-            const cellT v = rule[group[0]];
-            for (const codeT code : group.subspan(1)) {
-                if (v != rule[code]) {
-                    return false;
+    inline const setT& set_count() {
+        return setT::global<*+[](codeT_to<uint16_t>& m_map) {
+            for_each_code([&](const codeT code) {
+                static_assert(cellT::states == 3);
+                const envT env = decode(code);
+                const cellT s = env.s();
+                int count[3]{};
+                for (const cellT c : env.data) {
+                    ++count[c];
                 }
-            }
-        }
-        return true;
+                --count[s];
+                // No need for [2] (<-> [0]+[1]).
+                m_map[code] = s + count[0] * cellT::states + count[1] * cellT::states * 9;
+            });
+        }>();
     }
+
+    // !!TODO: whether to support sum set (sum < count < iso)?
+    inline const setT& set_sum() {
+        return setT::global<*+[](codeT_to<uint16_t>& m_map) {
+            for_each_code([&](const codeT code) {
+                const envT env = decode(code);
+                const cellT s = env.s();
+                int sum = 0;
+                for (const cellT c : env.data) {
+                    sum += c;
+                }
+                sum -= s;
+                m_map[code] = s + sum * cellT::states;
+            });
+        }>();
+    }
+
+    inline void test_iso() {
+        static_assert(cellT::states == 3);
+        verify(isotropic().k() == 2862);
+    }
+
+    inline bool is_isotropic(const ruleT& rule) { return isotropic().contains(rule); }
 
     inline void to_zero(ruleT& rule) { rule.fill(cellT(0)); }
 
     inline void to_identity(ruleT& rule) {
-        for_each_code([&rule](const codeT c) { rule[c] = decode(c, 4); });
+        for_each_code([&rule](const codeT c) { rule[c] = decode_s(c); });
     }
 
     // TODO: support generating "clean" / random rules equivalent to gol / arbitrary isotropic 2-state rules?
@@ -229,9 +288,10 @@ namespace iso3 {
 
     // This is more special as it emulates gol at two levels (cellT(2) ~ "living", but also emulates another level of gol in the "dead" area (cellT(0) ~ "truly dead")).
     inline void to_life(ruleT& rule) {
-        for (const groupT group : isotropic::groups()) {
+        static_assert(cellT::states == 3); // (Designed for 3 but also works for 2.)
+        for (const groupT group : isotropic().groups()) {
             const envT env = decode(group[0]);
-            const cellT s = env.data[4];
+            const cellT s = env.s();
             const int count_2 = std::ranges::count(env.data, 2) - (s == 2);
             const int count_12 = count_2 + std::ranges::count(env.data, 1) - (s == 1);
             rule.fill(group, count_2 == 3 || (count_2 == 2 && s == 2)     ? cellT(2)
@@ -240,17 +300,24 @@ namespace iso3 {
         }
     }
 
+    inline void to_next(ruleT& rule, const groupT group) {
+        // rule.fill(group, next(rule[group[0]])); // Not unconditionally reversible.
+        for (const codeT c : group) {
+            rule[c] = next(rule[c]);
+        }
+    }
+
+    inline void to_prev(ruleT& rule, const groupT group) {
+        for (const codeT c : group) {
+            rule[c] = prev(rule[c]);
+        }
+    }
+
     // Note: sizeof(std::mt19937) = 5000 in MSVC (about twice the necessary size)...
     // Related: https://github.com/microsoft/STL/issues/5198
     using randT = std::mt19937;
 
     using freqT = std::array<int, cellT::states>; // [i] for cellT(i).
-
-    inline cellT rand_cell_other_than(const cellT c, randT& rand) {
-        static_assert(cellT::states == 3);
-        static constexpr cellT values[3][2]{{cellT(1), cellT(2)}, {cellT(0), cellT(2)}, {cellT(0), cellT(1)}};
-        return values[c][rand() & 1];
-    }
 
     inline auto rand_cell_from(randT& rand) {
         return [&rand] { return cellT(rand() % cellT::states); };
@@ -271,71 +338,49 @@ namespace iso3 {
         return [&rand, cp = int(65536 * std::clamp(p, 0.0, 1.0))] { return (rand() & 65535) < cp; };
     }
 
-    // (Also isotropic but too random.)
+    // (Isotropic but too random.)
     inline void rand_rule(ruleT& rule, randT& rand) {
         const auto rand_cell = rand_cell_from(rand);
-        for (const groupT group : isotropic::groups()) {
+        for (const groupT group : isotropic().groups()) {
             rule.fill(group, rand_cell());
         }
     }
 
-    inline void rand_rule_iso(ruleT& rule, randT& rand, const freqT freq) {
+    inline void rand_rule(ruleT& rule, randT& rand, const freqT freq, const std::span<const groupT> groups) {
         const auto rand_cell = rand_cell_from(rand, freq);
-        for (const groupT group : isotropic::groups()) {
+        for (const groupT group : groups) {
             rule.fill(group, rand_cell());
         }
     }
 
-    // TODO: whether to support sum-based rules? (sum < count < iso)
-    inline void rand_rule_sum(ruleT& rule, randT& rand, const freqT freq) {
-        const auto rand_cell = rand_cell_from(rand, freq);
-        std::optional<cellT> values[(cellT::states - 1) * 8 + 1][cellT::states]{};
-        for (const groupT group : isotropic::groups()) {
-            const envT env = decode(group[0]);
-            const cellT s = env.data[4];
-            int sum = 0;
-            for (const cellT c : env.data) {
-                sum += c;
-            }
-            sum -= s;
-            auto& v = values[sum][s];
-            rule.fill(group, v ? *v : *(v = rand_cell()));
+    // !!TODO: improve.
+    inline void randomize(ruleT& rule, const groupT group, randT& rand) {
+        static_assert(cellT::states == 3);
+        if (rand() & 1) {
+            to_next(rule, group);
+        } else {
+            to_prev(rule, group);
         }
     }
 
-    inline void rand_rule_count(ruleT& rule, randT& rand, const freqT freq) {
-        const auto rand_cell = rand_cell_from(rand, freq);
-        std::optional<cellT> values[9][9][cellT::states]{};
-        for (const groupT group : isotropic::groups()) {
-            const envT env = decode(group[0]);
-            const cellT s = env.data[4];
-            int count[3]{};
-            for (const cellT c : env.data) {
-                ++count[c];
-            }
-            --count[s];
-            auto& v = values[count[0]][count[1]][s]; // No need for [2] (<-> [0]+[1]).
-            rule.fill(group, v ? *v : *(v = rand_cell()));
-        }
-    }
-
-    inline void randomize_p(ruleT& rule, randT& rand, const double p) {
+    inline void randomize_p(ruleT& rule, randT& rand, const double p, const std::span<const groupT> groups) {
         const auto rand_p = rand_p_from(rand, p);
-        for (const groupT group : isotropic::groups()) {
+        for (const groupT group : groups) {
             if (rand_p()) {
-                rule.fill(group, rand_cell_other_than(rule[group[0]], rand));
+                randomize(rule, group, rand);
             }
         }
     }
 
     // Note: ranges::shuffle doesn't work with vector<bool> (though std::shuffle does).
-    inline void randomize_n(ruleT& rule, randT& rand, const int n) {
-        std::vector<char> chosen(isotropic::k, false);
-        std::ranges::fill_n(chosen.data(), std::clamp(n, 0, isotropic::k), true);
+    inline void randomize_n(ruleT& rule, randT& rand, const int n, const std::span<const groupT> groups) {
+        const int k = groups.size();
+        std::vector<char> chosen(k, false);
+        std::ranges::fill_n(chosen.data(), std::clamp(n, 0, k), true);
         std::ranges::shuffle(chosen, rand);
-        for (int i = 0; const groupT group : isotropic::groups()) {
+        for (int i = 0; const groupT group : groups) {
             if (chosen[i++]) {
-                rule.fill(group, rand_cell_other_than(rule[group[0]], rand));
+                randomize(rule, group, rand);
             }
         }
     }
@@ -368,18 +413,19 @@ namespace iso3 {
             return arr;
         }
 
-        inline constexpr int required_size = (isotropic::k + 2) / 3;
+        inline constexpr int required_size = (2862 /*isotropic().k()*/ + 2) / 3;
 
         // Due to the huge size, there's no plan to support saving arbitrary 3-state rules.
         // '(' and ')' are not part of the rule-string, but for easier recovery (e.g. when pasted into another string by accident).
         // TODO: support additional prefix / postfix (e.g. "\n")?
         inline std::string to_string(const ruleT& rule) {
+            assert(is_isotropic(rule));
             std::string str(required_size + 2, '\0');
             str.front() = '(';
             str.back() = ')';
             std::array<cellT, 3> arr{};
             int pos = 1, cnt = 0;
-            for (const groupT group : isotropic::groups()) {
+            for (const groupT group : isotropic().groups()) {
                 arr[cnt] = rule[group[0]];
                 if (++cnt == 3) {
                     str[pos++] = to_char(arr);
@@ -399,7 +445,7 @@ namespace iso3 {
             assert(std::ranges::all_of(str, is_char));
             std::array<cellT, 3> arr{};
             int pos = 0, cnt = 3;
-            for (const groupT group : isotropic::groups()) {
+            for (const groupT group : isotropic().groups()) {
                 if (cnt == 3) {
                     arr = from_char(str[pos++]);
                     cnt = 0;
@@ -464,16 +510,16 @@ namespace iso3 {
     // Multiple assignments are applied in order without checking for contradictions.
     inline bool extract_values(ruleT& rule, const std::string_view str) {
         using _misc_::is_012;
-        const auto apply = [&rule](const char* str) {
+        const auto apply = [&rule, &iso = isotropic()](const char* str) {
             const auto fill = [&rule, ch = str[10]](const groupT group) {
-                rule.fill(group, ch == 'i' ? decode(group[0], 4) : cellT(ch - '0'));
+                rule.fill(group, ch == 'i' ? decode_s(group[0]) : cellT(ch - '0'));
             };
             if (std::ranges::all_of(str, str + 9, is_012)) { // For performance.
                 envT env{};
                 for (int i = 0; i < 9; ++i) {
                     env.data[i] = cellT(str[i] - '0');
                 }
-                fill(isotropic::group_for(encode(env)));
+                fill(iso.group_for(encode(env)));
             } else {
                 const auto match = [str](const codeT code) {
                     // `ranges::equal` is inconvenient here. (Why is there no `std::equal_n`...)
@@ -481,7 +527,7 @@ namespace iso3 {
                         return ch == '*' ? true : is_012(ch) ? cell == ch - '0' : cell != ch - 'a' /*abc*/;
                     });
                 };
-                for (const groupT group : isotropic::groups()) {
+                for (const groupT group : iso.groups()) {
                     if (std::ranges::any_of(group, match)) {
                         fill(group);
                     }
