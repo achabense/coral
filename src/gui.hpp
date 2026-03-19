@@ -490,11 +490,30 @@ private:
     }
 };
 
-// !!TODO: improve.
-inline const iso3::setT& get_set(const char set) {
-    assert(set == 'i' || set == 't');
-    return set == 'i' ? iso3::isotropic() : iso3::totalistic();
-}
+class set_mode {
+    char m_set = 'i'; // i(so)/t(ot)
+
+public:
+    set_mode(char s) : m_set(s) { assert(s == 'i' || s == 't'); }
+
+    const iso3::setT* operator->() const {
+        assert(m_set == 'i' || m_set == 't');
+        return m_set == 'i' ? &iso3::isotropic() : &iso3::totalistic();
+    }
+
+    // !!TODO: tooltips.
+    bool select() {
+        const char old_set = m_set;
+        if (ImGui::RadioButton("Iso", m_set == 'i')) {
+            m_set = 'i';
+        }
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Tot", m_set == 't')) {
+            m_set = 't';
+        }
+        return m_set != old_set;
+    }
+};
 
 // TODO: support configurable page size.
 class rule_generator : no_copy {
@@ -503,17 +522,16 @@ class rule_generator : no_copy {
     ring_buffer<ruleT> m_rules{page_size * 20};
     int m_pos = 0; // Position for the first rule in the page.
 
-    // !!TODO: messy...
-    // !!TODO: support default set ('\0' -> same as editing?)
-    char m_set = 'i'; // i(so)/t(ot)
+    // TODO: support default set? ('\0' ~ same as editing)
+    set_mode m_set = 'i';
+
     bool m_abs = true;
     // Abs mode:
     iso3::freqT m_freq{8, 2, 1};
     // Rel mode:
-    int m_dist = 10;
-    char m_unit = '%'; // '\0'/%
-    opt_rule m_rel{};  // Relative to `m_rel ? *m_rel : rel`.
-    // TODO: decouple around/exact mode from unit (number/%)?
+    int m_dist = 10; // Percentage.
+    // !!TODO: temporarily removed exact dist mode (`randomize_n`) & ability to lock relative rule.
+    // (Should redesign interaction between dist and set selection. % is stable while exact dist need to be clamped.)
 
     space_settings m_settings{};
 
@@ -584,18 +602,13 @@ private:
             if (m_rules.empty() || m_rules.size() <= page_end) {
                 randT& rand = get_rand();
                 rand.discard(uint32_t(std::time(0)) % 8); // Additional entropy.
+                const auto& groups = m_set->groups();
                 const int num = m_rules.size() < page_end ? page_end - m_rules.size() : page_size;
                 for (int i = 0; i < num; ++i) {
-                    // !!TODO: recheck...
                     if (m_abs) {
-                        iso3::rand_rule(m_rules.emplace_back_ex(), rand, m_freq, get_set(m_set).groups());
+                        iso3::rand_rule(m_rules.emplace_back_ex(), rand, m_freq, groups);
                     } else {
-                        ruleT& rule = m_rules.emplace_back(m_rel ? *m_rel : rel);
-                        if (m_unit == '%') {
-                            iso3::randomize_p(rule, rand, m_dist / 100.0, get_set(m_set).groups());
-                        } else {
-                            iso3::randomize_n(rule, rand, m_dist, get_set(m_set).groups());
-                        }
+                        iso3::randomize_p(m_rules.emplace_back(rel), rand, m_dist / 100.0, groups);
                     }
                 }
                 assert(m_rules.size() >= page_size);
@@ -627,9 +640,9 @@ private:
         if (!input_spec[0]) {
             if (m_abs) {
                 static_assert(cellT::states == 3);
-                std::snprintf(input_spec, std::size(input_spec), "%c|%d|%d|%d", m_set, m_freq[0], m_freq[1], m_freq[2]);
+                std::snprintf(input_spec, std::size(input_spec), "%d|%d|%d", m_freq[0], m_freq[1], m_freq[2]);
             } else {
-                std::snprintf(input_spec, std::size(input_spec), "%c|%d%c", m_set, m_dist, m_unit);
+                std::snprintf(input_spec, std::size(input_spec), "%d%%", m_dist);
             }
         }
 
@@ -644,29 +657,21 @@ private:
             bool failed = true;
             if (m_abs) {
                 iso3::freqT freq{};
-                char set{}, end{};
-                if (std::sscanf(input_spec, "%c|%d|%d|%d%c", &set, &freq[0], &freq[1], &freq[2], &end) == 4) {
-                    if (set == 'i' || set == 't') {
-                        failed = false;
-                        // !!TODO: uncertain about range & clamp or reject...
-                        if (!freq[0] && !freq[1] && !freq[2]) {
-                            freq[0] = freq[1] = freq[2] = 1;
-                        }
-                        m_set = set;
-                        m_freq = {std::clamp(freq[0], 0, 100), std::clamp(freq[1], 0, 100),
-                                  std::clamp(freq[2], 0, 100)};
+                char end{};
+                if (std::sscanf(input_spec, "%d|%d|%d%c", &freq[0], &freq[1], &freq[2], &end) == 3) {
+                    failed = false;
+                    // !!TODO: uncertain about range & clamp or reject...
+                    if (!freq[0] && !freq[1] && !freq[2]) {
+                        freq[0] = freq[1] = freq[2] = 1;
                     }
+                    m_freq = {std::clamp(freq[0], 0, 100), std::clamp(freq[1], 0, 100), std::clamp(freq[2], 0, 100)};
                 }
             } else {
                 int dist{};
-                char set{}, unit{}, end{};
-                if (const int r = std::sscanf(input_spec, "%c|%d%c%c", &set, &dist, &unit, &end); 2 <= r && r <= 3) {
-                    if ((set == 'i' || set == 't') && (unit == '%' || unit == '\0')) {
-                        failed = false;
-                        m_set = set;
-                        m_unit = unit;
-                        m_dist = std::clamp(dist, 0, unit == '%' ? 100 : get_set(m_set).k());
-                    }
+                char unit{}, end{};
+                if (std::sscanf(input_spec, "%d%c%c", &dist, &unit, &end) == 2 && unit == '%') {
+                    failed = false;
+                    m_dist = std::clamp(dist, 0, 100);
                 }
             }
             if (failed) {
@@ -677,21 +682,8 @@ private:
             input_spec[0] = '\0';
         }
 
-        // TODO: should be able to visualize the rule...
-        // (Ideally the locked rule should be shown in a separate window, but it's hard to control z-order in imgui...)
-        if constexpr (debug_mode) {
-            if (!m_abs) {
-                ImGui::SameLine();
-                if (bool locked = bool(m_rel); ImGui::Checkbox("Lock", &locked)) {
-                    if (!m_rel) {
-                        m_rel.emplace(rel);
-                        set_message("Locked.");
-                    } else {
-                        m_rel.reset();
-                    }
-                }
-            }
-        }
+        ImGui::SameLine();
+        m_set.select();
 
         ImGui::Separator();
         m_settings.header();
@@ -832,7 +824,7 @@ class main_data : no_copy {
     bool misc_temp[3][3]{};
     bool skip(const codeT code, const cellT v) const { return misc_skip[iso3::decode_s(code)][v]; }
 
-    char m_set = 'i';
+    set_mode m_set = 'i';
 
 public:
     void display() {
@@ -846,7 +838,7 @@ public:
         m_loader.display_if_open("Load", m_spaces, 20000, to_rule);
         m_generator.display_if_open("Generate", m_rule.get(), m_spaces, 10000, to_rule);
 
-        // TODO: slightly wasteful. (Can reuse memory by making `record_for::get()` return non-const ref, but that's risky.)
+        // TODO: slightly wasteful.
         std::unique_ptr<ruleT> temp_rule(new ruleT{m_rule.get()});
         ruleT& rule = *temp_rule;
         // assert(get_set(m_set).contains(rule)); // Too strict.
@@ -860,24 +852,13 @@ public:
 
         ImGui::SameLine();
         ImGui::BeginGroup();
-        // !!TODO: improve...
-        {
-            const char old_s = m_set;
-            if (ImGui::RadioButton("Iso", m_set == 'i')) {
-                m_set = 'i';
-            }
+        if (m_set.select()) {
+            m_settings.restart_all();
+        }
+        // !!TODO: improve. (wasteful & should explain)
+        if (!m_set->contains(rule)) {
             ImGui::SameLine();
-            if (ImGui::RadioButton("Tot", m_set == 't')) {
-                m_set = 't';
-            }
-            // !!TODO: wasteful.
-            if (!get_set(m_set).contains(rule)) {
-                ImGui::SameLine();
-                imgui_TextDisabled("(x)");
-            }
-            if (old_s != m_set) {
-                m_settings.restart_all();
-            }
+            imgui_TextDisabled("(x)");
         }
         if constexpr (debug_mode) { // Experimental features.
             m_popup.button_to_open("Filter", -300);
@@ -1015,7 +996,7 @@ public:
 
             // TODO: -> separate pages (instead of a single scrollable page)?
             int group_index = 0;
-            for (const auto& group : get_set(m_set).groups()) {
+            for (const auto& group : m_set->groups()) {
                 const codeT group_0 = group[0];
                 const cellT value = rule[group_0];
                 if (skip(group_0, value)) {
@@ -1045,16 +1026,15 @@ public:
                         "Right-click to locate groups.");
                 } else if (ImGui::BeginItemTooltip()) {
                     int n = 0;
-                    for (bool first = true; const codeT c : group) {
-                        if (!std::exchange(first, false)) {
+                    for (const codeT c : group) {
+                        if (n != 0 && n != 8) {
                             ImGui::SameLine(0, item_spacing);
                         }
                         code_image(c);
-                        if (++n == 8) {
+                        if (++n == 16) {
                             break;
                         }
                     }
-                    // !!TODO: improve.
                     if (n < group.size()) {
                         imgui_Text("...");
                     }
@@ -1256,12 +1236,12 @@ private:
         ImGui::SameLine();
         ImGui::BeginGroup();
         if (ImGui::Button("Locate")) {
-            const codeT group_0 = get_set(m_set).group_for(iso3::encode(cells))[0];
+            const codeT group_0 = m_set->group_for(iso3::encode(cells))[0];
             record.set(group_0);
             sync_from_record();
         }
         if (ImGui::Button("Random")) {
-            const auto& groups = get_set(m_set).groups();
+            const auto& groups = m_set->groups();
             const codeT group_0 = groups[get_rand()() % groups.size()][0];
             // TODO: whether to locate automatically?
             record.set(group_0);
