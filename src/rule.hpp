@@ -334,11 +334,6 @@ namespace iso3 {
         };
     }
 
-    inline auto rand_p_from(randT& rand, const double p) {
-        assert(0.0 <= p && p <= 1.0);
-        return [&rand, cp = int(65536 * std::clamp(p, 0.0, 1.0))] { return (rand() & 65535) < cp; };
-    }
-
     // (Isotropic but too random.)
     inline void rand_rule(ruleT& rule, randT& rand) {
         const auto rand_cell = rand_cell_from(rand);
@@ -354,25 +349,6 @@ namespace iso3 {
         }
     }
 
-    // !!TODO: improve.
-    inline void randomize(ruleT& rule, const groupT group, randT& rand) {
-        static_assert(cellT::states == 3);
-        if (rand() & 1) {
-            to_next(rule, group);
-        } else {
-            to_prev(rule, group);
-        }
-    }
-
-    inline void randomize_p(ruleT& rule, randT& rand, const double p, const std::span<const groupT> groups) {
-        const auto rand_p = rand_p_from(rand, p);
-        for (const groupT group : groups) {
-            if (rand_p()) {
-                randomize(rule, group, rand);
-            }
-        }
-    }
-
     // Note: ranges::shuffle doesn't work with vector<bool> (though std::shuffle does).
     inline void randomize_n(ruleT& rule, randT& rand, const int n, const std::span<const groupT> groups) {
         const int k = groups.size();
@@ -381,9 +357,19 @@ namespace iso3 {
         std::ranges::shuffle(chosen, rand);
         for (int i = 0; const groupT group : groups) {
             if (chosen[i++]) {
-                randomize(rule, group, rand);
+                static_assert(cellT::states == 3);
+                if (rand() & 1) {
+                    to_next(rule, group);
+                } else {
+                    to_prev(rule, group);
+                }
             }
         }
+    }
+
+    inline void randomize_p(ruleT& rule, randT& rand, const double p, const std::span<const groupT> groups) {
+        const int n = std::binomial_distribution<int>(groups.size(), std::clamp(p, 0.0, 1.0))(rand);
+        randomize_n(rule, rand, n, groups);
     }
 
     namespace _misc_ {
