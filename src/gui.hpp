@@ -522,16 +522,16 @@ class rule_generator : no_copy {
     ring_buffer<ruleT> m_rules{page_size * 20};
     int m_pos = 0; // Position for the first rule in the page.
 
-    // TODO: support default set? ('\0' ~ same as editing)
     set_mode m_set = 'i';
 
     bool m_abs = true;
     // Abs mode:
     iso3::freqT m_freq{8, 2, 1};
     // Rel mode:
-    int m_dist = 10; // Percentage.
-    // !!TODO: temporarily removed exact dist mode (`randomize_n`) & ability to lock relative rule.
-    // (Should redesign interaction between dist and set selection. % is stable while exact dist need to be clamped.)
+    int m_dist = 10;
+    char m_unit = '%'; // '\0'/'%'
+    // TODO: decouple around/exact mode from unit (number/%)?
+    // TODO: temporarily removed ability to lock relative rule. (How to visualize?)
 
     space_settings m_settings{};
 
@@ -608,7 +608,12 @@ private:
                     if (m_abs) {
                         iso3::rand_rule(m_rules.emplace_back_ex(), rand, m_freq, groups);
                     } else {
-                        iso3::randomize_p(m_rules.emplace_back(rel), rand, m_dist / 100.0, groups);
+                        ruleT& rule = m_rules.emplace_back(rel);
+                        if (m_unit == '%') {
+                            iso3::randomize_p(rule, rand, m_dist / 100.0, groups);
+                        } else {
+                            iso3::randomize_n(rule, rand, m_dist, groups);
+                        }
                     }
                 }
                 assert(m_rules.size() >= page_size);
@@ -642,7 +647,7 @@ private:
                 static_assert(cellT::states == 3);
                 std::snprintf(input_spec, std::size(input_spec), "%d|%d|%d", m_freq[0], m_freq[1], m_freq[2]);
             } else {
-                std::snprintf(input_spec, std::size(input_spec), "%d%%", m_dist);
+                std::snprintf(input_spec, std::size(input_spec), "%d%c", m_dist, m_unit);
             }
         }
 
@@ -669,9 +674,12 @@ private:
             } else {
                 int dist{};
                 char unit{}, end{};
-                if (std::sscanf(input_spec, "%d%c%c", &dist, &unit, &end) == 2 && unit == '%') {
-                    failed = false;
-                    m_dist = std::clamp(dist, 0, 100);
+                if (const int r = std::sscanf(input_spec, "%d%c%c", &dist, &unit, &end); 1 <= r && r <= 2) {
+                    if (unit == '%' || unit == '\0') {
+                        failed = false;
+                        m_unit = unit;
+                        m_dist = std::clamp(dist, 0, unit == '%' ? 100 : m_set->k());
+                    }
                 }
             }
             if (failed) {
@@ -683,7 +691,12 @@ private:
         }
 
         ImGui::SameLine();
-        m_set.select();
+        if (m_set.select() && m_unit != '%') {
+            // !!TODO: improve (not reversible & whether to clamp silently when in abs mode?)
+            // (Suppose dist ~ 1000 (Rel+Iso) -> Abs -> Tot (clamps dist to 135) -> Rel, dist appears to change without explicit op.)
+            m_dist = std::clamp(m_dist, 0, m_set->k());
+            input_spec[0] = '\0';
+        }
 
         ImGui::Separator();
         m_settings.header();

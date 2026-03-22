@@ -271,7 +271,8 @@ namespace iso3 {
 
     inline void test_iso() {
         static_assert(cellT::states == 3);
-        verify(isotropic().k() == 2862);
+        verify(isotropic().k() == 2862); // 954*3
+        // verify(totalistic().k() == 135); // 45*3
     }
 
     inline bool is_isotropic(const ruleT& rule) { return isotropic().contains(rule); }
@@ -355,8 +356,9 @@ namespace iso3 {
         std::vector<char> chosen(k, false);
         std::ranges::fill_n(chosen.data(), std::clamp(n, 0, k), true);
         std::ranges::shuffle(chosen, rand);
-        for (int i = 0; const groupT group : groups) {
-            if (chosen[i++]) {
+        for (int i = 0; i < k; ++i) {
+            if (chosen[i]) {
+                const groupT group = groups[i];
                 static_assert(cellT::states == 3);
                 if (rand() & 1) {
                     to_next(rule, group);
