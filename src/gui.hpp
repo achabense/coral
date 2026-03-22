@@ -831,11 +831,8 @@ class main_data : no_copy {
     space_group m_spaces{};
     shared_popup& m_popup = m_spaces.popup(); // Shared from `m_spaces`. (Misc popups use negative id.)
 
-    // TODO: support grouping / sorting / (more generalized) filtering / value-constraints etc.
-    // TODO: can be enhanced to [2862][3] by extending assignment format.
-    bool misc_skip[3][3]{};
-    bool misc_temp[3][3]{};
-    bool skip(const codeT code, const cellT v) const { return misc_skip[iso3::decode_s(code)][v]; }
+    // TODO: support grouping / sorting / filtering / value-constraints etc.
+    // bool skip(const ruleT& rule, const iso3::groupT group) const { return false; }
 
     set_mode m_set = 'i';
 
@@ -874,33 +871,6 @@ public:
             imgui_TextDisabled("(x)");
         }
         if constexpr (debug_mode) { // Experimental features.
-            m_popup.button_to_open("Filter", -300);
-            if (m_popup.opened(-300)) { // !!TODO: improve.
-                ImGui::SetNextWindowPos(ImGui::GetItemRectMin() + ImVec2(ImGui::GetItemRectSize().x, 0));
-            }
-            if (m_popup.begin_popup(-300, true)) {
-                if (ImGui::IsWindowAppearing()) {
-                    std::memcpy(misc_temp, misc_skip, sizeof(misc_skip));
-                }
-                if (imgui_DoubleClickButton("Apply")) {
-                    std::memcpy(misc_skip, misc_temp, sizeof(misc_skip));
-                    set_message("Applied.");
-                }
-                for (int f = 0; f < 3; ++f) {
-                    for (int t = 0; t < 3; ++t) {
-                        if (t != 0) {
-                            ImGui::SameLine();
-                        }
-                        const char label[]{char('0' + f), '-', '>', char('0' + t), '\0'};
-                        bool n = !misc_temp[f][t];
-                        ImGui::Checkbox(label, &n);
-                        misc_temp[f][t] = !n;
-                    }
-                }
-
-                m_popup.end_popup();
-            }
-
             shortcut_group shortcut{no_active_and_window_focused()};
             if (shortcut(ctrl_mode::ctrl, ImGuiKey_V, repeat_mode::no_repeat, 0)) {
                 const char* str = ImGui::GetClipboardText();
@@ -1010,12 +980,10 @@ public:
             // TODO: -> separate pages (instead of a single scrollable page)?
             int group_index = 0;
             for (const auto& group : m_set->groups()) {
-                const codeT group_0 = group[0];
-                const cellT value = rule[group_0];
-                if (skip(group_0, value)) {
-                    space_index += cellT::states - 1;
-                    continue;
-                }
+                // if (skip(rule, group)) {
+                //     space_index += cellT::states - 1;
+                //     continue;
+                // }
 
                 if (group_index % per_line != 0) {
                     ImGui::SameLine(0, group_spacing);
@@ -1024,11 +992,12 @@ public:
                 }
                 ++group_index;
 
+                const codeT group_0 = group[0];
                 code_image(group_0);
                 // TODO: where to open popup? (Window bg or group button?)
                 // if (ImGui::IsItemHovered()) { m_popup.open_on_idle_rclick(-100); }
                 const ImVec2 code_image_max = ImGui::GetItemRectMax();
-                render_cell(value, {code_image_max.x - cell_width, code_image_max.y + cell_width});
+                render_cell(rule[group_0], {code_image_max.x - cell_width, code_image_max.y + cell_width});
                 if (to_locate == group_0) {
                     // More accurate than `ImGui::SetScrollHereY(0)`.
                     ImGui::SetScrollFromPosY(ImGui::GetItemRectMin().y - ImGui::GetWindowPos().y, 0);
@@ -1105,9 +1074,6 @@ private:
         ImGui::SameLine();
         m_popup.button_to_open("Select..", -600);
         item_tooltip("Select named rules (for editing).");
-        if (m_popup.opened(-600)) { // !!TODO: improve.
-            ImGui::SetNextWindowPos(ImGui::GetItemRectMin() + ImVec2(ImGui::GetItemRectSize().x, 0));
-        }
         if (m_popup.begin_popup(-600, false)) {
             const bool to_zero = ImGui::Selectable("Zero");
             item_tooltip("The rule that maps cell to 0 in all cases (~ the initial rule).");
