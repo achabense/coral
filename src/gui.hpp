@@ -609,10 +609,11 @@ private:
                         iso3::rand_rule(m_rules.emplace_back_ex(), rand, m_freq, groups);
                     } else {
                         ruleT& rule = m_rules.emplace_back(rel);
+                        const int dist = std::clamp(m_dist, 0, m_unit == '%' ? 100 : m_set->k());
                         if (m_unit == '%') {
-                            iso3::randomize_p(rule, rand, m_dist / 100.0, groups);
+                            iso3::randomize_p(rule, rand, dist / 100.0, groups);
                         } else {
-                            iso3::randomize_n(rule, rand, m_dist, groups);
+                            iso3::randomize_n(rule, rand, dist, groups);
                         }
                     }
                 }
@@ -647,7 +648,8 @@ private:
                 static_assert(cellT::states == 3);
                 std::snprintf(input_spec, std::size(input_spec), "%d|%d|%d", m_freq[0], m_freq[1], m_freq[2]);
             } else {
-                std::snprintf(input_spec, std::size(input_spec), "%d%c", m_dist, m_unit);
+                const int dist = std::clamp(m_dist, 0, m_unit == '%' ? 100 : m_set->k());
+                std::snprintf(input_spec, std::size(input_spec), "%d%c", dist, m_unit);
             }
         }
 
@@ -678,7 +680,9 @@ private:
                     if (unit == '%' || unit == '\0') {
                         failed = false;
                         m_unit = unit;
-                        m_dist = std::clamp(dist, 0, unit == '%' ? 100 : m_set->k());
+                        // TODO: improve. (Deferred for stability against set change.)
+                        // m_dist = std::clamp(dist, 0, unit == '%' ? 100 : m_set->k());
+                        m_dist = dist;
                     }
                 }
             }
@@ -691,10 +695,8 @@ private:
         }
 
         ImGui::SameLine();
-        if (m_set.select() && m_unit != '%') {
-            // !!TODO: improve (not reversible & whether to clamp silently when in abs mode?)
-            // (Suppose dist ~ 1000 (Rel+Iso) -> Abs -> Tot (clamps dist to 135) -> Rel, dist appears to change without explicit op.)
-            m_dist = std::clamp(m_dist, 0, m_set->k());
+        if (m_set.select() /*&& (!m_abs && m_unit != '%')*/) {
+            // May affect clamped dist.
             input_spec[0] = '\0';
         }
 
