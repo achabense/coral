@@ -200,7 +200,7 @@ public:
     }
 };
 
-// !!TODO: make this non-blocking?
+// TODO: make this non-blocking?
 class file_loader : no_copy {
     std::shared_ptr<void> m_impl{}; // Unique ownership; just for simpler code.
 

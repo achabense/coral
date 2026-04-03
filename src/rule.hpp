@@ -67,9 +67,8 @@ namespace iso3 {
     }
     using _codeT_::codeT;
 
-    // !!TODO: reconsider.
     // Note: the encoding must not be changed, as `to_string(ruleT)` depends on it (actually the order of `isotropic().groups()`).
-    // (It's possible to remove the dependency by defining a separate sampling order, but that's costly...)
+    // TODO: remove the dependency by defining a separate sampling sequence?
     inline codeT encode(const envT env) {
         const auto& [q, w, e, a, s, d, z, x, c] = env.data;
         const int v = q * pow_cs(0) + w * pow_cs(1) + e * pow_cs(2) + a * pow_cs(3) + s * pow_cs(4) + d * pow_cs(5) +

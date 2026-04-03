@@ -343,11 +343,11 @@ bool file_loader::display_if_open(std::string& data, const int max_size) {
             }
         }
 
-        // !!TODO: recheck...
         // (Undocumented in UI.)
+        // TODO: fragile.
         if (!ImGui::IsWindowAppearing() && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId) &&
             ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && !ImGui::IsAnyItemActive() &&
-            !ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows)) {
+            !ImGui::IsAnyItemHovered() && !ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows)) {
             open = false;
         }
         ImGui::EndPopup();

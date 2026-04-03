@@ -655,7 +655,7 @@ private:
 
         ImGui::SameLine();
         ImGui::SetNextItemWidth(ImGui::GetFontSize() * 8 /*10*/);
-        // !!TODO: whether to support this shortcut? (Will automatically select all text.)
+        // TODO: whether to support this shortcut? (Intentionally undocumented in UI; will automatically select all text.)
         if (shortcut(ctrl_mode::no_ctrl, ImGuiKey_Enter, repeat_mode::no_repeat, 0)) {
             imgui_ActivateItem(ImGui::GetID("##Input"));
         }
@@ -787,7 +787,7 @@ private:
                 extract_rules(str);
             }
         }
-        if (m_rules.size() > 1) { // !!TODO: improve.
+        if (m_rules.size() > 1) { // TODO: improve.
             ImGui::SameLine();
             ImGui::Text("%d rules", (int)m_rules.size());
         }
@@ -937,9 +937,6 @@ public:
                 "To scroll with shortcuts:\n"
                 "Up/Down      ~ scroll up/down.\n"
                 "Ctrl+Up/Down ~ scroll to top/bottom.");
-
-            imgui_Text("");
-            imgui_Text("<- the \"selected rule\"");
         } else {
             // TODO: is empty group guaranteed to be valid (and consume SameLine())?
             ImGui::Dummy({1, 1});

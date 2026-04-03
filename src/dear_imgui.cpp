@@ -27,10 +27,10 @@ void imgui_HighlightItem(ImGuiID id) {
 
 void imgui_ActivateItem(ImGuiID id) { ImGui::ActivateItemByID(id); }
 
-// !!TODO: recheck interaction with input fields...
 bool imgui_BeginPopupEx(ImGuiID id, ImGuiWindowFlags flags) {
     if (ImGui::BeginPopupEx(id, flags | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar |
                                     ImGuiWindowFlags_NoSavedSettings)) {
+        // (Doesn't work with input fields.)
         // TODO: risky workaround to prevent left-click from focusing the background -> affecting visual (as hover is blocked).
         // Related: `UpdateMouseMovingWindowEndFrame()`.
         if (ImGui::IsWindowFocused() /*topmost popup*/ && !ImGui::IsWindowHovered() && !ImGui::IsAnyItemActive() &&
