@@ -234,7 +234,8 @@ public:
         if (std::exchange(reset_scroll, false)) {
             ImGui::SetNextWindowScroll({0, 0});
         }
-        if (ImGui::BeginChild("Entries", ImVec2(0, -(ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y * 2)))) {
+        if (ImGui::BeginChild("Entries", ImVec2(0, -(ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y * 2 +
+                                                     ImGui::GetStyle().SeparatorSize)))) {
             const entryT* sel = nullptr;
             const std::string_view filter = input_filter;
             for (bool first = true; const auto& entry : m_current.entries()) {
