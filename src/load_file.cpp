@@ -204,7 +204,7 @@ public:
 
         imgui_Text(m_current.str());
         m_popup.open_for_text(-50, ImGui::IsItemHovered());
-        if (m_popup.begin_popup(-50, true)) {
+        if (m_popup.begin_popup(-50)) {
             if (ImGui::Selectable("Copy path")) {
                 copy_path(m_current.path(), m_current.str().c_str());
             }
@@ -256,7 +256,13 @@ public:
                     item_tooltip("Right-click to copy path.");
                 }
                 m_popup.open_on_idle_rclick(id, ImGui::IsItemHovered());
-                if (m_popup.begin_popup(id, true)) {
+                const bool lock_scroll =
+                    m_popup.opened(id) && ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem |
+                                                                 ImGuiHoveredFlags_AllowWhenBlockedByPopup);
+                if (m_popup.begin_popup(id)) {
+                    if (lock_scroll) {
+                        imgui_LockScroll();
+                    }
                     if (ImGui::Selectable("Copy path")) {
                         copy_path(m_current / entry.filename);
                     }

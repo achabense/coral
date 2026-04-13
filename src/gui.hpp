@@ -425,7 +425,13 @@ public:
         const bool can_select = to_rule;
         bool select = false, copy = op == 'C';
         m_popup.open_on_idle_rclick(id, hovered);
-        if (m_popup.begin_popup(id, /*lock-scroll*/ true)) {
+        const bool lock_scroll =
+            m_popup.opened(id) && ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem |
+                                                         ImGuiHoveredFlags_AllowWhenBlockedByPopup);
+        if (m_popup.begin_popup(id)) {
+            if (lock_scroll) {
+                imgui_LockScroll();
+            }
             select |= can_select && ImGui::Selectable("Select");
             item_tooltip("Select for editing.");
             copy |= ImGui::Selectable("Copy");
@@ -819,7 +825,7 @@ private:
 };
 
 // !!TODO: restore tooltip for purple button (requires double-clicking).
-// !!TODO: recheck when to lock scroll for popup.
+// TODO: recheck when to lock scroll for popup.
 // TODO: support adding to temp list.
 // TODO: whether to support ctrl shortcuts for spaces (ctrl+scroll/click/Z/Y/C)? (Intentionally undocumented in UI.)
 class main_data : no_copy {
@@ -955,9 +961,7 @@ public:
             // TODO: support ctrl+F?
             m_popup.open_on_idle_rclick(-100, ImGui::IsWindowHovered() /*child only*/ &&
                                                   !ImGui::IsAnyItemHovered() /*bg only*/);
-            if (m_popup.opened(-100) /*micro optimization*/ &&
-                m_popup.begin_popup(-100, !ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem |
-                                                                  ImGuiHoveredFlags_AllowWhenBlockedByPopup))) {
+            if (m_popup.begin_popup(-100)) {
                 select_group(to_locate);
                 m_popup.end_popup();
             }
@@ -1073,7 +1077,7 @@ private:
         ImGui::SameLine();
         m_popup.button_to_open("Select..", -600);
         item_tooltip("Select named rules (for editing).");
-        if (m_popup.begin_popup(-600, false)) {
+        if (m_popup.begin_popup(-600)) {
             const bool to_zero = ImGui::Selectable("Zero");
             item_tooltip("The rule that maps cell to 0 in all cases (~ the initial rule).");
             const bool to_identity = ImGui::Selectable("Identity");
@@ -1123,7 +1127,7 @@ private:
         ImGui::SameLine();
         ImGui::Text("%d fps", (int)std::round(ImGui::GetIO().Framerate));
         m_popup.open_for_text(-200, ImGui::IsItemHovered());
-        if (m_popup.begin_popup(-200, true)) {
+        if (m_popup.begin_popup(-200)) {
             set_framerate();
             m_popup.end_popup();
         }
