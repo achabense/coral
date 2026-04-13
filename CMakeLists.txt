@@ -13,7 +13,7 @@ set(FETCHCONTENT_UPDATES_DISCONNECTED TRUE)
 FetchContent_Declare(
     sdl3
     GIT_REPOSITORY "https://github.com/libsdl-org/SDL.git"
-    GIT_TAG        683181b47cfabd293e3ea409f838915b8297a4fd # release-3.4.2
+    GIT_TAG        5848e584a1b606de26e3dbd1c7e4ecbc34f807a6 # release-3.4.4
     GIT_PROGRESS   TRUE
     GIT_SHALLOW    TRUE
 )
@@ -24,7 +24,7 @@ FetchContent_MakeAvailable(sdl3)
 FetchContent_Declare(
     imgui
     GIT_REPOSITORY "https://github.com/ocornut/imgui.git"
-    GIT_TAG        6ded5230d043aa32c755e65c910c2af5002fb9f9 # release-1.92.6
+    GIT_TAG        dac07199cfd761113d966eb8ad739254e10df2fe # release-1.92.7
     GIT_PROGRESS   TRUE
     GIT_SHALLOW    TRUE
 )
