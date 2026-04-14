@@ -637,8 +637,8 @@ private:
         }
         ImGui::EndDisabled();
 
-        // !!TODO: improve & add tooltip...
-        static_var /*temp*/ char input_spec[20]{};
+        // TODO: should belong to object.
+        static_var char input_spec[20]{};
         ImGui::SameLine();
         if (ImGui::RadioButton("Abs", m_abs)) {
             m_abs = true;
@@ -673,7 +673,7 @@ private:
                 char end{};
                 if (std::sscanf(input_spec, "%d|%d|%d%c", &freq[0], &freq[1], &freq[2], &end) == 3) {
                     failed = false;
-                    // !!TODO: uncertain about range & clamp or reject...
+                    // TODO: uncertain about range & clamp or reject...
                     if (!freq[0] && !freq[1] && !freq[2]) {
                         freq[0] = freq[1] = freq[2] = 1;
                     }
@@ -776,7 +776,6 @@ private:
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
-        // TODO: support multiple lists (instead of replacing the existing one).
         if (imgui_DoubleClickButton("Paste") || shortcut(ctrl_mode::ctrl, ImGuiKey_V, repeat_mode::no_repeat)) {
             const char* str = ImGui::GetClipboardText(); // May be nullptr.
             extract_rules(str ? str : "");
@@ -802,7 +801,8 @@ private:
         m_settings.header();
     }
 
-    // !!TODO: set message when reaches `max`?
+    // TODO: support appending mode or multiple lists (instead of replacing the existing one)?
+    // TODO: set message when reaches `max`?
     void extract_rules(std::string_view str, int reserve = 8, int max = 200) {
         std::vector<ruleT> rules{};
         rules.reserve(reserve);
@@ -877,25 +877,6 @@ public:
         if (!m_set->contains(rule)) {
             ImGui::SameLine();
             imgui_TextDisabled("(x)");
-        }
-        if constexpr (debug_mode) { // Experimental features.
-            shortcut_group shortcut{no_active_and_window_focused()};
-            if (shortcut(ctrl_mode::ctrl, ImGuiKey_V, repeat_mode::no_repeat, 0)) {
-                const char* str = ImGui::GetClipboardText();
-                if (!str) {
-                    str = "";
-                }
-                assert(!to_rule);
-                if (iso3::extract_rule(to_rule.emplace_ex(), str)) {
-                    // set_message("...");
-                } else if (iso3::extract_values(to_rule.emplace(m_rule.get()), str)) {
-                    // Format ~ [012*abc]{9}|[012i], e.g. *********|0 ****aa*a0|i ***aaaa00|i aaaa00a00|0 100000000|2
-                    // set_message("...");
-                } else {
-                    to_rule.reset();
-                    set_message("No rules.");
-                }
-            }
         }
         if (item_tooltip_enabled) {
             const auto text_with_tooltip = [](const char* text, const char* tooltip) {
@@ -1059,6 +1040,24 @@ public:
 private:
     void header() {
         shortcut_group shortcut{no_active_and_window_focused()};
+        if constexpr (debug_mode) { // TODO: support in release mode?
+            if (shortcut(ctrl_mode::ctrl, ImGuiKey_V, repeat_mode::no_repeat, 0)) {
+                const char* str = ImGui::GetClipboardText();
+                if (!str) {
+                    str = "";
+                }
+                assert(!to_rule);
+                if (iso3::extract_rule(to_rule.emplace_ex(), str)) {
+                    // set_message("...");
+                } else if (iso3::extract_values(to_rule.emplace(m_rule.get()), str)) {
+                    // Format ~ [012*abc]{9}|[012i], e.g. *********|0 ****aa*a0|i ***aaaa00|i aaaa00a00|0 100000000|2
+                    // set_message("...");
+                } else {
+                    to_rule.reset();
+                    set_message("No rules.");
+                }
+            }
+        }
 
         ImGui::Checkbox("Tooltips", &item_tooltip_enabled);
         // TODO: should take part in filtering.
